@@ -542,6 +542,37 @@ test('can handle setting objects without exploding', t => {
   t.end()
 })
 
+test('getChanges with ignoredKeys', t => {
+  t.deepEqual(
+    getChanges(
+      {},
+      { something: 'hi', somethingElse: 'bye' },
+      { ignoredKeys: ['something'] }
+    ),
+    { somethingElse: 'bye' }
+  )
+
+  t.deepEqual(
+    getChanges(
+      {},
+      {
+        something: 'hi',
+        somethingElse: {
+          something: 'will still be here',
+          this: 'will be here',
+        },
+        doNotInclude: 'me',
+      },
+      { ignoredKeys: ['something', 'doNotInclude'] }
+    ),
+    {
+      somethingElse: { something: 'will still be here', this: 'will be here' },
+    },
+    'only ignores key on top level object'
+  )
+  t.end()
+})
+
 test('can handle functions as values', t => {
   const definition = buildDefinition({
     things: 'func',

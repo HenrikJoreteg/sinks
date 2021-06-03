@@ -1,3 +1,4 @@
+//@ts-check
 import deepSet from './deep-set'
 import { basicTypes } from './basic-types'
 import { isEmpty } from './utils'
@@ -29,10 +30,27 @@ const buildMatcherFunction = definition => {
   }
 }
 
-export const getChanges = (original, modified, includeDeletions = true) => {
+/**
+ *
+ * @param {any} original the original object
+ * @param {any} modified the modified one
+ * @param {{
+ *  includeDeletions?: boolean,
+ *  ignoredKeys?: string[]
+ * }} [options]
+ * @returns {any} Changes object or null
+ */
+export const getChanges = (
+  original,
+  modified,
+  { includeDeletions = true, ignoredKeys } = {}
+) => {
   const combined = { ...original, ...modified }
   const changes = {}
   for (const key in combined) {
+    if (ignoredKeys && ignoredKeys.includes(key)) {
+      continue
+    }
     const inOriginal = original && original.hasOwnProperty(key)
     const inModified = modified && modified.hasOwnProperty(key)
     // removed in new
@@ -47,7 +65,11 @@ export const getChanges = (original, modified, includeDeletions = true) => {
     } else if (modified[key] !== original[key]) {
       const modifiedType = typeof modified[key]
       if (modifiedType === 'object') {
-        const otherChanges = getChanges(original[key], modified[key])
+        // we pass through "ignored" for nested stuff, but not the ignored keys
+        // those only apply at the top level
+        const otherChanges = getChanges(original[key], modified[key], {
+          includeDeletions,
+        })
         for (const otherKey in otherChanges) {
           changes[key + '.' + otherKey] = otherChanges[otherKey]
         }
@@ -70,8 +92,8 @@ export const updateObject = (obj, updateObj) => {
 }
 
 export const mergeObjects = (obj1, obj2) => {
-  const addedByObj2 = getChanges(obj1, obj2, false)
-  const addedByObj1 = getChanges(obj2, obj1, false)
+  const addedByObj2 = getChanges(obj1, obj2, { includeDeletions: false })
+  const addedByObj1 = getChanges(obj2, obj1, { includeDeletions: false })
 
   if (!addedByObj1 && !addedByObj2) {
     return { updated: obj1 }
@@ -99,7 +121,7 @@ export const mergeObjects = (obj1, obj2) => {
       notConflicted[key] = addedByObj1[key]
     }
   }
-  const toReturn = { updated: updateObject(obj1, notConflicted, true) }
+  const toReturn = { updated: updateObject(obj1, notConflicted) }
   if (!isEmpty(conflicts)) {
     toReturn.conflicts = conflicts
   }

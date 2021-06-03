@@ -24,9 +24,11 @@ It was designed to be part of a system where data stored as simple objects needs
 
 ## Main exports
 
-### `getChanges(originalObject, finalState, includeDeletions[Boolean default = true])`
+### `getChanges(originalObject, finalState, {includeDeletions: true, ignoredKeys: []})`
 
 This will return an object containing changes that can be applied to another object using `updateObject()`. If there are no changes, returns `null`.
+
+You it takes an optional options object where you can opt out of including deletions and you can specify a list of top-level object keys to ignore.
 
 ### `updateObject(currentObject, changes)`
 
@@ -287,6 +289,7 @@ npm install sinks
 
 ## Change log
 
+- `1.0.0`: `getChanges` now takes an options object instead of just a boolean and that option option now can take a `ignoredKeys: []` option to ignore changes to specified top-level keys.
 - `0.0.1`: First public release.
 
 ## credits
