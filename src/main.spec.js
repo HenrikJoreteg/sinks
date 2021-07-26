@@ -1,4 +1,5 @@
 import test from 'tape'
+import { removeNullAndEmpty } from './deep-set'
 import { buildDefinition, getChanges, updateObject } from './main'
 
 test('basic deep set value works', t => {
@@ -21,7 +22,7 @@ test('basic deep set value works', t => {
   })
   // throws if setting object to invalid path
   t.throws(() => {
-    built.setValue({}, 'silliness', [])
+    built.setValue({}, 'silliness', [{ ok: 'you' }])
   })
   // does not throw if setting objects as long as
   // child values are valid
@@ -36,6 +37,10 @@ test('basic deep set value works', t => {
       },
     ])
   })
+  // does not throw if setting empty objects because validation happens at the end
+  // and empty objects are removed
+  t.deepEqual(built.setValue({}, 'ridiculous', []), {})
+
   // does throw if setting objects with invalid children
   t.throws(() => {
     built.setValue({}, 'items', [
@@ -294,6 +299,15 @@ test('object sync works', t => {
         'items.1': { name: 'somethingElse', value: 32 },
       },
     },
+    {
+      definition: {
+        'items.[].name': 'str',
+        'items.[].value': 'positiveInt',
+      },
+      before: { items: [{ name: 'hi' }] },
+      after: {},
+      expectedDiff: { items: null },
+    },
   ]
 
   entries.forEach(({ definition, before, after, expectedDiff }) => {
@@ -303,6 +317,39 @@ test('object sync works', t => {
     const updated = builtDefinition.update(before, diff)
     t.deepEqual(updated, after)
   })
+
+  t.end()
+})
+
+test('updating with empty nested values removes them', t => {
+  const obj1 = {
+    name: 'Henrik',
+  }
+
+  t.deepEqual(
+    updateObject(obj1, {
+      other: {
+        nested: {
+          hi: [],
+        },
+      },
+    }),
+    obj1,
+    'Setting deeply nested set of set of objects / arrays the whole chain of empty stuff is removed'
+  )
+
+  t.deepEqual(
+    updateObject(obj1, {
+      other: {
+        ok: 'you',
+        nested: {
+          hi: [],
+        },
+      },
+    }),
+    { name: 'Henrik', other: { ok: 'you' } },
+    'Setting deeply nested with partial real values works'
+  )
 
   t.end()
 })
@@ -463,6 +510,30 @@ test('merge works', t => {
         },
       },
     },
+    {
+      description: 'handles fields that are missing in first object',
+      definition: {
+        something: 'obj',
+        'something.{}.nested': 'str',
+      },
+      obj2: {},
+      obj1: {
+        something: {
+          foo: {
+            nested: 'hi',
+          },
+        },
+      },
+      expectedOutcome: {
+        updated: {
+          something: {
+            foo: {
+              nested: 'hi',
+            },
+          },
+        },
+      },
+    },
   ]
 
   entries.forEach(
@@ -573,6 +644,28 @@ test('getChanges with ignoredKeys', t => {
   t.end()
 })
 
+test('getChanges with includeDeletion option', t => {
+  t.deepEqual(
+    getChanges(
+      { ok: 'hi' },
+      { something: 'hi', somethingElse: 'bye' },
+      { includeDeletions: false }
+    ),
+    { something: 'hi', somethingElse: 'bye' }
+  )
+
+  t.deepEqual(
+    getChanges(
+      { ok: 'hi' },
+      { something: 'hi', somethingElse: 'bye', ok: null },
+      { includeDeletions: true }
+    ),
+    { something: 'hi', somethingElse: 'bye', ok: null }
+  )
+
+  t.end()
+})
+
 test('can handle functions as values', t => {
   const definition = buildDefinition({
     things: 'func',
@@ -583,5 +676,138 @@ test('can handle functions as values', t => {
   const res = definition.update({}, { things: func }, true)
   t.deepEqual(res, { things: func })
 
+  t.end()
+})
+
+test('setting deeply nested value should not fail if lower level objects not defined', t => {
+  const definition = buildDefinition({
+    other: 'str',
+    'systemsReview.{}': 'str',
+    'systemsReview.{}.id': 'str',
+    'systemsReview.{}.entries': 'arr',
+    'systemsReview.{}.entries.[].editing': 'bool',
+    'systemsReview.{}.entries.[].details.[]': 'arr',
+    'systemsReview.{}.entries.[].details.[].name': 'str',
+  })
+
+  const res = definition.update(
+    { other: 'thing' },
+    {
+      'systemsReview.cns.entries.[0]': {
+        details: [{ name: 'hi' }],
+        editing: true,
+      },
+    }
+  )
+
+  t.deepEqual(res, {
+    other: 'thing',
+    systemsReview: {
+      cns: {
+        entries: [
+          {
+            details: [{ name: 'hi' }],
+            editing: true,
+          },
+        ],
+      },
+    },
+  })
+
+  const expected = { other: 'thing' }
+
+  t.deepEqual(
+    definition.update(res, { 'systemsReview.cns.entries': null }, true),
+    expected,
+    'should remove all keys'
+  )
+
+  t.deepEqual(
+    definition.update(
+      res,
+      {
+        'systemsReview.cns.entries.[0]': null,
+      },
+      true
+    ),
+    expected,
+    'should remove all keys'
+  )
+
+  t.deepEqual(
+    definition.update(res, { 'systemsReview.cns.entries': null }, true),
+    expected,
+    'should remove all keys'
+  )
+
+  t.deepEqual(
+    definition.update(
+      res,
+      {
+        'systemsReview.cns.entries.[0]': {
+          details: [{ name: null }],
+          editing: null,
+        },
+      },
+      true
+    ),
+    expected,
+    'should remove all keys'
+  )
+
+  t.end()
+})
+
+test('remove empty', t => {
+  t.deepEqual(
+    removeNullAndEmpty({
+      hello: null,
+      hi: [{ there: [{ ok: null }] }],
+    }),
+    {}
+  )
+
+  t.deepEqual(
+    removeNullAndEmpty({
+      hello: {},
+      hi: [{ there: [{ ok: [] }] }],
+    }),
+    {}
+  )
+
+  t.deepEqual(
+    removeNullAndEmpty({
+      items: [
+        {
+          something: {
+            hi: {
+              else: [
+                {
+                  crazy: 'hi',
+                },
+              ],
+            },
+            there: null,
+          },
+          ok: [{ things: [{ item: [{ silly: null }] }] }],
+        },
+      ],
+    }),
+    {
+      items: [
+        {
+          something: {
+            hi: {
+              else: [
+                {
+                  crazy: 'hi',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    }
+  )
   t.end()
 })

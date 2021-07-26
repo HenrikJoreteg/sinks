@@ -14,7 +14,7 @@ It was designed to be part of a system where data stored as simple objects needs
 
 ## Basic use cases
 
-1. You have a large object and modified version of that large object, you want them to be the same, but you don't want to send the entire new object.
+1. You have a large object and a modified version of that large object, you want them to be the same, but you don't want to send the entire new object.
 
 2. Defining/validating/updating objects stored in redux reducers. Updates are always immutable!
 
@@ -41,7 +41,7 @@ const obj1 = {
   name: 'Henrik',
 }
 
-const updatedObject = updateObj(obj1, {
+const updatedObject = updateObject(obj1, {
   'favoriteColors.foo.name': 'yellow',
 })
 
@@ -67,7 +67,7 @@ const obj1 = {
 }
 
 // setting a value to `null` deletes it
-const updatedObject = updateObj(obj1, {
+const updatedObject = updateObject(obj1, {
   'something.foo': null,
 })
 
@@ -89,7 +89,7 @@ const obj1 = {
 // if an array already exists in the first object
 // you can just provide an update that uses the
 // index as a number in your update path:
-const updated = updateObj(obj1, {
+const updated = updateObject(obj1, {
   'myStuff.0.description': 'skis',
 })
 
@@ -112,7 +112,7 @@ const obj1 = {
 
 // The square brackets tells the updater to create an array
 // instead of an object with a key named '0'
-const updated = updateObj(obj1, {
+const updated = updateObject(obj1, {
   'myStuff.[0].description': 'skis',
 })
 
@@ -124,8 +124,8 @@ console.log(updated)
 
 // if you *DON'T* supply the brackets this would happen
 console.log(
-  updateObj(obj1, {
-    'myStuff.[0].description': 'skis',
+  updateObject(obj1, {
+    'myStuff.0.description': 'skis',
   })
 )
 // {
@@ -147,7 +147,7 @@ const obj1 = {
 
 // can just supply an object
 console.log(
-  updateObj(obj1, {
+  updateObject(obj1, {
     other: {
       nested: 'thing',
     },
@@ -158,6 +158,34 @@ console.log(
 //   other: {
 //     nested: 'thing'
 //   }
+// }
+```
+
+Empty objects and arrays and `null` values are automatically removed.
+
+```js
+const obj1 = {
+  name: 'Henrik',
+}
+
+// even if you set a deeply nested set of
+// objects and the very last value is empty
+// the whole chain of empty stuff is removed
+console.log(
+  updateObject(obj1, {
+    other: {
+      nested: {
+        // note final value is an empty array
+        // once this is removed, the parent ones
+        // will be empty. So the whole thing is
+        // removed.
+        hi: [],
+      },
+    },
+  })
+)
+// {
+//   name: 'Henrik',
 // }
 ```
 
@@ -289,6 +317,7 @@ npm install sinks
 
 ## Change log
 
+- `2.0.0`: Now recursively removes all keys with values `{}`, `[]`, or `null` at the end of all set/update operations.
 - `1.0.0`: `getChanges` now takes an options object instead of just a boolean and that option option now can take a `ignoredKeys: []` option to ignore changes to specified top-level keys.
 - `0.0.1`: First public release.
 

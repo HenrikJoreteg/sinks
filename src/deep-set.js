@@ -27,7 +27,50 @@ SOFTWARE.
 import { isEmpty } from './utils'
 const digitRe = /^\[\d+\]/
 
-export default function (source, keys, update, merge = true) {
+export const removeNullAndEmpty = original => {
+  const removeEmpty = obj => {
+    const isObj = typeof obj === 'object'
+    const isArray = Array.isArray(obj)
+
+    if (!isObj) {
+      return obj
+    }
+
+    if (isArray) {
+      for (let i = 0, l = obj.length; i < l; i++) {
+        const value = obj[i]
+        if (value === null || isEmpty(value)) {
+          obj.splice(i, 1)
+          removeEmpty(original)
+        } else {
+          removeEmpty(value)
+        }
+      }
+    } else {
+      for (const key in obj) {
+        const value = obj[key]
+        if (value === null || isEmpty(value)) {
+          delete obj[key]
+          removeEmpty(original)
+        } else {
+          removeEmpty(value)
+        }
+      }
+    }
+
+    return obj
+  }
+
+  return removeEmpty(original)
+}
+
+const copy = (source, isArr) => {
+  let to = (source && !!source.pop) || isArr ? [] : {}
+  for (let i in source) to[i] = source[i]
+  return to
+}
+
+export default (source, keys, update, merge = true) => {
   keys.split && (keys = keys.split('.'))
   keys = keys.map(key => (digitRe.test(key) ? Number(key.slice(1, -1)) : key))
 
@@ -62,26 +105,5 @@ export default function (source, keys, update, merge = true) {
     }
   }
 
-  // if we are deleting clean out empty
-  // objects and arrays
-  if (shouldDelete) {
-    let last = next,
-      i = 0
-    for (; i < l; i++) {
-      const currentKey = keys[i]
-      if (isEmpty(last[currentKey])) {
-        delete last[currentKey]
-        return next
-      }
-      last = last[currentKey]
-    }
-  }
-
-  return next
-}
-
-function copy(source, isArr) {
-  let to = (source && !!source.pop) || isArr ? [] : {}
-  for (let i in source) to[i] = source[i]
-  return to
+  return removeNullAndEmpty(next)
 }

@@ -64,7 +64,7 @@ export const getChanges = (
       // changed in new
     } else if (modified[key] !== original[key]) {
       const modifiedType = typeof modified[key]
-      if (modifiedType === 'object') {
+      if (modifiedType === 'object' && modified[key] !== null) {
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
         const otherChanges = getChanges(original[key], modified[key], {
