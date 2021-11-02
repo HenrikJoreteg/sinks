@@ -1,7 +1,7 @@
 //@ts-check
 import deepSet from './deep-set'
 import { basicTypes } from './basic-types'
-import { isEmpty } from './utils'
+import { isEmpty, isInt, stripBrackets } from './utils'
 import dlv from 'dlv'
 
 const toRegexp = str =>
@@ -58,23 +58,31 @@ export const getChanges = (
       if (includeDeletions) {
         changes[key] = null
       }
-      // added in new
-    } else if (inModified && !inOriginal) {
-      changes[key] = modified[key]
-      // changed in new
-    } else if (modified[key] !== original[key]) {
-      const modifiedType = typeof modified[key]
-      if (modifiedType === 'object' && modified[key] !== null) {
+      continue
+    }
+
+    // what type of value are we dealing with?
+    const modifiedValue = modified[key]
+    const modifiedValueIsObject = typeof modifiedValue === 'object'
+
+    // checks if modified value is different in any way
+    if ((modifiedValue && !inOriginal) || modifiedValue !== original[key]) {
+      if (modifiedValueIsObject && modifiedValue !== null) {
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
-        const otherChanges = getChanges(original[key], modified[key], {
-          includeDeletions,
-        })
+        const otherChanges = getChanges(
+          inOriginal ? original[key] : {},
+          modifiedValue,
+          {
+            includeDeletions,
+          }
+        )
         for (const otherKey in otherChanges) {
-          changes[key + '.' + otherKey] = otherChanges[otherKey]
+          changes[(isInt(key) ? `[${key}]` : key) + '.' + otherKey] =
+            otherChanges[otherKey]
         }
       } else {
-        changes[key] = modified[key]
+        changes[key] = modifiedValue
       }
     }
   }
@@ -111,7 +119,8 @@ export const mergeObjects = (obj1, obj2) => {
   const notConflicted = {}
   for (const key in addedByObj2) {
     if (addedByObj1.hasOwnProperty(key)) {
-      conflicts[key] = [dlv(obj1, key), dlv(obj2, key)]
+      const cleanedKey = stripBrackets(key)
+      conflicts[key] = [dlv(obj1, cleanedKey), dlv(obj2, cleanedKey)]
     } else {
       notConflicted[key] = addedByObj2[key]
     }

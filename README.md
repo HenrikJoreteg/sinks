@@ -317,6 +317,7 @@ npm install sinks
 
 ## Change log
 
+- `3.0.0`: `getChanges` now returns individual key path updates, this is important for simultaneous changes of nested objects. Technically, this should not be a breaking change unless you manually modify or somehow deal with the changes object. But since it changes the shape of something returned by public API I decided to bump the major version.
 - `2.0.0`: Now recursively removes all keys with values `{}`, `[]`, or `null` at the end of all set/update operations.
 - `1.0.0`: `getChanges` now takes an options object instead of just a boolean and that option option now can take a `ignoredKeys: []` option to ignore changes to specified top-level keys.
 - `0.0.1`: First public release.

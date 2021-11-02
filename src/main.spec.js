@@ -1,6 +1,7 @@
 import test from 'tape'
 import { removeNullAndEmpty } from './deep-set'
 import { buildDefinition, getChanges, updateObject } from './main'
+import { isInt } from './utils'
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -151,6 +152,17 @@ test('handles removing objects if all keys deleted', t => {
   t.end()
 })
 
+test('isInt', t => {
+  const yes = ['0', '25', '45', '10000']
+  const no = ['0s', '2s5', '&', 'b10000', ' ']
+  t.ok(yes.every(isInt), 'every one is an int')
+  t.ok(
+    no.every(str => !isInt(str)),
+    'every one with other chars is not an int'
+  )
+  t.end()
+})
+
 test('object sync works', t => {
   const definition = {
     thing: 'str',
@@ -169,7 +181,7 @@ test('object sync works', t => {
       definition,
       before: { thing: 'ok' },
       after: { thing: 'ok', items: [{ name: 'hi', value: 45 }] },
-      expectedDiff: { items: [{ name: 'hi', value: 45 }] },
+      expectedDiff: { 'items.[0].name': 'hi', 'items.[0].value': 45 },
     },
     {
       definition,
@@ -198,11 +210,8 @@ test('object sync works', t => {
         ],
       },
       expectedDiff: {
-        'big.0': {
-          hairy: {
-            anything: { audacious: true, items: [{ other: 'something' }] },
-          },
-        },
+        'big.[0].hairy.anything.audacious': true,
+        'big.[0].hairy.anything.items.[0].other': 'something',
       },
     },
     {
@@ -247,7 +256,7 @@ test('object sync works', t => {
       },
       expectedDiff: {
         'crazy.foo.foo.foo.foo.foo.stuff': false,
-        'crazy.foo.foo.foo.foo.items': [{ thing: 'yep' }],
+        'crazy.foo.foo.foo.foo.items.[0].thing': 'yep',
       },
     },
     {
@@ -275,10 +284,10 @@ test('object sync works', t => {
         ],
       },
       expectedDiff: {
-        items: [
-          { name: 'something', value: 12 },
-          { name: 'somethingElse', value: 32 },
-        ],
+        'items.[0].name': 'something',
+        'items.[0].value': 12,
+        'items.[1].name': 'somethingElse',
+        'items.[1].value': 32,
       },
     },
     {
@@ -294,9 +303,10 @@ test('object sync works', t => {
         ],
       },
       expectedDiff: {
-        'items.0.name': 'something',
-        'items.0.value': 12,
-        'items.1': { name: 'somethingElse', value: 32 },
+        'items.[0].name': 'something',
+        'items.[0].value': 12,
+        'items.[1].name': 'somethingElse',
+        'items.[1].value': 32,
       },
     },
     {
@@ -360,7 +370,6 @@ test('merge works', t => {
       description: 'handles discovering deeply nested conflicts',
       definition: {
         'big.[].hairy.{}.audacious': 'bool',
-        'big.[].hairy.{}.items.[].other': 'str',
       },
       obj1: {
         big: [
@@ -418,7 +427,7 @@ test('merge works', t => {
           ],
         },
         conflicts: {
-          'big.1.hairy.thing.audacious': [false, true],
+          'big.[1].hairy.thing.audacious': [false, true],
         },
       },
     },
@@ -637,7 +646,8 @@ test('getChanges with ignoredKeys', t => {
       { ignoredKeys: ['something', 'doNotInclude'] }
     ),
     {
-      somethingElse: { something: 'will still be here', this: 'will be here' },
+      'somethingElse.something': 'will still be here',
+      'somethingElse.this': 'will be here',
     },
     'only ignores key on top level object'
   )

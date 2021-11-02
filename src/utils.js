@@ -11,3 +11,7 @@ export const isEmpty = unknown => {
   }
   return false
 }
+
+export const isInt = str => /^\d+$/.test(str)
+
+export const stripBrackets = str => str.replace(/[[\]]/g, '')
