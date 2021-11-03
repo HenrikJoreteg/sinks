@@ -7,7 +7,7 @@
   "module": "./dist/index.module.js",
   "unpkg": "./dist/index.umd.js",
   "scripts": {
-    "prepublish": "npm run format && npm run lint && npm test && npm run build",
+    "prepublishOnly": "npm run format && npm run lint && npm test && npm run build",
     "build": "rm -rf ./dist && microbundle --no-compress",
     "test-inspect": "node --inspect-brk definition.spec.js",
     "test": "node -r esm src/main.spec.js",
