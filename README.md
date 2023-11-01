@@ -317,6 +317,7 @@ npm install sinks
 
 ## Change log
 
+- `3.1.0`: Added `simpleObjectDeepEqual` utility for lightweight object comparisons of simple objects.
 - `3.0.4`: Added other test for `getChanges` to ensure it handle nested objects with integer keys correctly.
 - `3.0.3`: Fixed bug where `getChanges` not handle objects with integer keys correctly.
 - `3.0.2`: Fix bad prepublish script.

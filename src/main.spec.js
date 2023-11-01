@@ -1,7 +1,23 @@
-import test from 'tape'
+import originalTest from 'tape'
 import { removeNullAndEmpty } from './deep-set'
 import { buildDefinition, getChanges, updateObject } from './main'
-import { injectBrackets } from './utils'
+import { simpleObjectDeepEqual } from './utils'
+
+// This is a little extra testing of our simple object deep equal.
+// By modifying the tests, we can make sure that
+// every scenario where we do a t.deepEqual
+// we also confirm that our simple object deep equal
+// function returns the same result.
+const test = (title, fn) => {
+  originalTest(title, t => {
+    const { deepEqual } = t
+    t.deepEqual = (a, b, msg) => {
+      deepEqual(a, b, msg)
+      t.equal(simpleObjectDeepEqual(a, b), true)
+    }
+    fn(t)
+  })
+}
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -149,17 +165,6 @@ test('handles removing objects if all keys deleted', t => {
   )
   t.deepEqual(res3, {})
 
-  t.end()
-})
-
-test('injectBrackets', t => {
-  // we will never do this, but we don't want this function
-  // to care if the thing it is wrapping is a number or not
-  t.equal(injectBrackets('foo'), '[foo]')
-  t.equal(injectBrackets('234'), '[234]')
-  t.equal(injectBrackets('5.23'), '[5].23')
-  t.equal(injectBrackets('5.23.asdf.asdf'), '[5].23.asdf.asdf')
-  t.equal(injectBrackets(''), '')
   t.end()
 })
 
@@ -621,6 +626,8 @@ test('merge works', t => {
       } else {
         const outcome = builtDefinition.merge(obj1, obj2)
         t.deepEqual(outcome, expectedOutcome, description)
+        // also use our simple object deep equal to make sure it gets the same result
+        t.equal(simpleObjectDeepEqual(outcome, expectedOutcome), true)
       }
     }
   )

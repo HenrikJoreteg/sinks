@@ -10,7 +10,7 @@
     "prepublishOnly": "npm run format && npm run lint && npm test && npm run build",
     "build": "rm -rf ./dist && microbundle --no-compress",
     "test-inspect": "node --inspect-brk definition.spec.js",
-    "test": "node -r esm src/main.spec.js",
+    "test": "tape -r esm ./**/*.spec.js",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
