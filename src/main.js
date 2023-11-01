@@ -1,7 +1,7 @@
 //@ts-check
 import deepSet from './deep-set'
 import { basicTypes } from './basic-types'
-import { isEmpty, isInt, stripBrackets } from './utils'
+import { injectBrackets, isEmpty, stripBrackets } from './utils'
 import dlv from 'dlv'
 
 const toRegexp = str =>
@@ -78,8 +78,11 @@ export const getChanges = (
           }
         )
         for (const otherKey in otherChanges) {
-          changes[(isInt(key) ? `[${key}]` : key) + '.' + otherKey] =
-            otherChanges[otherKey]
+          const value = otherChanges[otherKey]
+          const isArray = Array.isArray(modified[key])
+          changes[
+            key + '.' + (isArray ? injectBrackets(otherKey) : otherKey)
+          ] = value
         }
       } else {
         changes[key] = modifiedValue

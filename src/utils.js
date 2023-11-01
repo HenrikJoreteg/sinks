@@ -12,6 +12,10 @@ export const isEmpty = unknown => {
   return false
 }
 
-export const isInt = str => /^\d+$/.test(str)
-
 export const stripBrackets = str => str.replace(/[[\]]/g, '')
+
+export const injectBrackets = str => {
+  if (!str) return str
+  const split = str.split('.')
+  return [`[${split[0]}]`, ...split.slice(1)].join('.')
+}

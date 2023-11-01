@@ -1,7 +1,7 @@
 import test from 'tape'
 import { removeNullAndEmpty } from './deep-set'
 import { buildDefinition, getChanges, updateObject } from './main'
-import { isInt } from './utils'
+import { injectBrackets } from './utils'
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -152,14 +152,14 @@ test('handles removing objects if all keys deleted', t => {
   t.end()
 })
 
-test('isInt', t => {
-  const yes = ['0', '25', '45', '10000']
-  const no = ['0s', '2s5', '&', 'b10000', ' ']
-  t.ok(yes.every(isInt), 'every one is an int')
-  t.ok(
-    no.every(str => !isInt(str)),
-    'every one with other chars is not an int'
-  )
+test('injectBrackets', t => {
+  // we will never do this, but we don't want this function
+  // to care if the thing it is wrapping is a number or not
+  t.equal(injectBrackets('foo'), '[foo]')
+  t.equal(injectBrackets('234'), '[234]')
+  t.equal(injectBrackets('5.23'), '[5].23')
+  t.equal(injectBrackets('5.23.asdf.asdf'), '[5].23.asdf.asdf')
+  t.equal(injectBrackets(''), '')
   t.end()
 })
 
@@ -317,6 +317,31 @@ test('object sync works', t => {
       before: { items: [{ name: 'hi' }] },
       after: {},
       expectedDiff: { items: null },
+    },
+    {
+      definition: {
+        'objWithIntKeys.{}.name': 'str',
+        'objWithIntKeys.{}.other': 'str',
+      },
+      before: {
+        objWithIntKeys: {
+          3: {
+            name: 'first',
+            other: 'prop',
+          },
+        },
+      },
+      after: {
+        objWithIntKeys: {
+          2: {
+            name: 'second',
+          },
+        },
+      },
+      expectedDiff: {
+        'objWithIntKeys.3': null,
+        'objWithIntKeys.2.name': 'second',
+      },
     },
   ]
 
