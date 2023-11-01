@@ -1,6 +1,6 @@
 {
   "name": "sinks",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Tools for object sync (get it?!), validation, diffing, and immutable deep setting",
   "source": "src/index.js",
   "main": "./dist/index.js",
