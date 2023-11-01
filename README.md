@@ -317,6 +317,7 @@ npm install sinks
 
 ## Change log
 
+- `3.0.3`: Fixed bug where `getChanges` not handle objects with integer keys correctly.
 - `3.0.2`: Fix bad prepublish script.
 - `3.0.1`: Removing unnecessary conditional check.
 - `3.0.0`: `getChanges` now returns individual key path updates, this is important for simultaneous changes of nested objects. Technically, this should not be a breaking change unless you manually modify or somehow deal with the changes object. But since it changes the shape of something returned by public API I decided to bump the major version.
