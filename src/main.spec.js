@@ -343,6 +343,41 @@ test('object sync works', t => {
         'objWithIntKeys.2.name': 'second',
       },
     },
+    {
+      definition: {
+        'objWithIntKeys.{}.nested.{}.something': 'str',
+        'objWithIntKeys.{}.other': 'str',
+      },
+      before: {
+        objWithIntKeys: {
+          2: {
+            other: 'thing',
+            nested: {
+              8: {
+                something: 'also nested',
+              },
+            },
+          },
+        },
+      },
+      after: {
+        objWithIntKeys: {
+          3: {
+            nested: {
+              0: {
+                something: 'hello',
+              },
+            },
+            other: 'prop',
+          },
+        },
+      },
+      expectedDiff: {
+        'objWithIntKeys.2': null,
+        'objWithIntKeys.3.nested.0.something': 'hello',
+        'objWithIntKeys.3.other': 'prop',
+      },
+    },
   ]
 
   entries.forEach(({ definition, before, after, expectedDiff }) => {
