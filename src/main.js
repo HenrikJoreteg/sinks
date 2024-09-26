@@ -17,14 +17,40 @@ const toRegexp = str =>
 const buildMatcherFunction = definition => {
   const processed = {}
   for (const key in definition) {
-    processed[key] = { regex: toRegexp(key), key }
+    const value = definition[key]
+    if (key.includes('{}') || key.includes('[]')) {
+      const split = key.split('.')
+      const keysBeforeVariable = []
+      for (const part of split) {
+        if (part === '{}' || part === '[]') {
+          break
+        }
+        keysBeforeVariable.push(part)
+      }
+      const startsWith = keysBeforeVariable.join('.') + '.'
+      if (!processed[startsWith]) {
+        processed[startsWith] = []
+      }
+      const regex = toRegexp(key)
+      processed[startsWith].push({
+        value,
+        test: regex.test.bind(regex),
+      })
+    }
   }
 
   return path => {
+    if (definition[path]) {
+      return definition[path]
+    }
     for (const key in processed) {
-      const matches = processed[key].regex.test(path)
-      if (matches) {
-        return definition[key]
+      if (path.startsWith(key)) {
+        const limitedItemsToTest = processed[key]
+        for (const { test, value } of limitedItemsToTest) {
+          if (test(path)) {
+            return value
+          }
+        }
       }
     }
   }
@@ -154,16 +180,30 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
 
       if (typeof value === 'object' && type !== 'obj') {
         if (isEmpty(value) && !type) {
-          throw Error('Invalid path: ' + extendedPath)
+          throw Error('INVALID path: ' + extendedPath)
         }
         validateObject(value, extendedPath)
       } else {
         if (!type) {
-          throw Error('Invalid path: ' + extendedPath)
+          throw Error('INVALID path: ' + extendedPath)
         }
         let testFn
         if (Array.isArray(type)) {
-          testFn = () => type.some(typeEntry => fnsObject[typeEntry])
+          let found = false
+          let passed = false
+          for (const typeEntry of type) {
+            if (fnsObject[typeEntry]) {
+              found = true
+              if (fnsObject[typeEntry](value)) {
+                passed = true
+                break
+              }
+            }
+          }
+          if (!passed || !found) {
+            throw Error(`INVALID ${extendedPath}: ${value}`)
+          }
+          return
         } else {
           testFn = fnsObject[type]
         }

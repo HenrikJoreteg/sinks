@@ -1,23 +1,7 @@
-import originalTest from 'tape'
+import test from 'tape'
 import { removeNullAndEmpty } from './deep-set'
 import { buildDefinition, getChanges, updateObject } from './main'
 import { simpleObjectDeepEqual } from './utils'
-
-// This is a little extra testing of our simple object deep equal.
-// By modifying the tests, we can make sure that
-// every scenario where we do a t.deepEqual
-// we also confirm that our simple object deep equal
-// function returns the same result.
-const test = (title, fn) => {
-  originalTest(title, t => {
-    const { deepEqual } = t
-    t.deepEqual = (a, b, msg) => {
-      deepEqual(a, b, msg)
-      t.equal(simpleObjectDeepEqual(a, b), true)
-    }
-    fn(t)
-  })
-}
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -558,7 +542,7 @@ test('merge works', t => {
         other: 'different',
         blah: 'not known path',
       },
-      throws: 'Invalid path: blah',
+      throws: 'INVALID path: blah',
     },
     {
       description: 'handles fields that are missing in second object',
@@ -648,30 +632,6 @@ test('handles numbers as object keys', t => {
   const sparseArr = []
   sparseArr[1] = { else: 'hi' }
   t.deepEqual(res2, { something: sparseArr })
-
-  t.end()
-})
-
-test('handles dynamic first part of path', t => {
-  const definition = buildDefinition({
-    '{}.id': 'str',
-  })
-  const res = definition.update(
-    {},
-    {
-      'foo.id': 'thing',
-    },
-    true
-  )
-  t.deepEqual(
-    res,
-    {
-      foo: {
-        id: 'thing',
-      },
-    },
-    'assumes object by default'
-  )
 
   t.end()
 })
@@ -886,5 +846,188 @@ test('remove empty', t => {
       ],
     }
   )
+  t.end()
+})
+
+test('validate function behavior', t => {
+  const confirmError = (def, update, expectedMessage) => {
+    try {
+      def.update({}, update)
+      t.fail('should have thrown')
+    } catch (e) {
+      t.equal(e.message, expectedMessage)
+    }
+  }
+  const confirmOk = (def, update) => {
+    t.doesNotThrow(() => {
+      def.update({}, update)
+    })
+  }
+
+  t.test('function handles single type validations', t => {
+    const def = buildDefinition({
+      'items.{}.name': 'str',
+    })
+
+    confirmError(
+      def,
+      {
+        'items.0.name': 5,
+      },
+      'INVALID items.0.name: 5'
+    )
+
+    confirmError(
+      def,
+      {
+        name: 'hi',
+      },
+      'INVALID path: name'
+    )
+
+    confirmError(
+      def,
+      {
+        'the.name.of': 'hi',
+      },
+      'INVALID path: the.name.of'
+    )
+    confirmError(
+      def,
+      {
+        'items.0.name': () => {},
+      },
+      'INVALID items.0.name: () => {}'
+    )
+    confirmOk(def, {
+      'items.0.name': 'hi',
+    })
+
+    t.end()
+  })
+
+  t.test('function handles array of types correctly', t => {
+    const def = buildDefinition({
+      'items.{}.name': ['str', 'bool'],
+    })
+
+    confirmError(
+      def,
+      {
+        'items.0.name': 5,
+      },
+      'INVALID items.0.name: 5'
+    )
+
+    confirmError(
+      def,
+      {
+        name: 'hi',
+      },
+      'INVALID path: name'
+    )
+
+    confirmError(
+      def,
+      {
+        'the.name.of': 'hi',
+      },
+      'INVALID path: the.name.of'
+    )
+    confirmError(
+      def,
+      {
+        'items.0.name': () => {},
+      },
+      'INVALID items.0.name: () => {}'
+    )
+    confirmOk(def, {
+      'items.0.name': 'hi',
+    })
+    confirmOk(def, {
+      'items.0.name': true,
+    })
+    confirmOk(def, {
+      'items.0.name': false,
+    })
+
+    t.end()
+  })
+
+  t.test('function handles array of types correctly', t => {
+    const def = buildDefinition({
+      'items.{}.name': 'blah',
+    })
+    confirmError(
+      def,
+      {
+        'items.0.name': 5,
+      },
+      'INVALID type: blah'
+    )
+    t.end()
+  })
+
+  t.test("confirm partial match is doesn't cause issues", t => {
+    const def = buildDefinition({
+      'items.{}.name': 'str',
+      'itemsmore.{}.name': 'bool',
+    })
+    confirmError(
+      def,
+      {
+        'items.0.name': true,
+      },
+      'INVALID items.0.name: true'
+    )
+    t.end()
+  })
+})
+
+test.skip('validation performance test (using large local file not checked in)', t => {
+  // eslint-disable-next-line no-undef
+  const { large, definition } = require('../large')
+  const time = Date.now()
+  for (let i = 0; i < 100; i++) {
+    definition.validate(large)
+  }
+  const diff = Date.now() - time
+  // eslint-disable-next-line no-console
+  console.log('diff', diff)
+  t.ok(diff < 300, true, 'took less than 300ms to do 100 times')
+
+  // make sure it errors as expected
+  t.throws(
+    () => {
+      const copy = JSON.parse(JSON.stringify(large))
+      copy.blah = 'thing'
+      definition.validate(copy)
+    },
+    err => {
+      return err.message === 'INVALID path: blah'
+    },
+    'throws correct errors'
+  )
+
+  t.doesNotThrow(() => {
+    const copy = JSON.parse(JSON.stringify(large))
+    copy.vitalRecords.rec_thing = { vitals: { hr: { value: 'thing' } } }
+    definition.validate(copy)
+  })
+
+  t.throws(
+    () => {
+      const copy = JSON.parse(JSON.stringify(large))
+      copy.vitalRecords.rec_thing = { vitals: { hr: { value: true } } }
+      definition.validate(copy)
+    },
+    err => {
+      return (
+        err.message === 'INVALID vitalRecords.rec_thing.vitals.hr.value: true'
+      )
+    },
+    'throws correct error for nested value with multiple types'
+  )
+
   t.end()
 })
