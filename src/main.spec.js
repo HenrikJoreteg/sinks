@@ -1002,6 +1002,41 @@ test.skip('validation performance test (using large local file not checked in)',
   }
   const diff = Date.now() - time
   // eslint-disable-next-line no-console
-  console.log(diff)
+  console.log('diff', diff)
+  t.ok(diff < 300, true, 'took less than 300ms to do 100 times')
+
+  // make sure it errors as expected
+  t.throws(
+    () => {
+      const copy = JSON.parse(JSON.stringify(large))
+      copy.blah = 'thing'
+      definition.validate(copy)
+    },
+    err => {
+      return err.message === 'INVALID path: blah'
+    },
+    'throws correct errors'
+  )
+
+  t.doesNotThrow(() => {
+    const copy = JSON.parse(JSON.stringify(large))
+    copy.vitalRecords.rec_thing = { vitals: { hr: { value: 'thing' } } }
+    definition.validate(copy)
+  })
+
+  t.throws(
+    () => {
+      const copy = JSON.parse(JSON.stringify(large))
+      copy.vitalRecords.rec_thing = { vitals: { hr: { value: true } } }
+      definition.validate(copy)
+    },
+    err => {
+      return (
+        err.message === 'INVALID vitalRecords.rec_thing.vitals.hr.value: true'
+      )
+    },
+    'throws correct error for nested value with multiple types'
+  )
+
   t.end()
 })
