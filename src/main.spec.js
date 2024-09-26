@@ -967,6 +967,21 @@ test('validate function behavior', t => {
     )
     t.end()
   })
+
+  t.test("confirm partial match is doesn't cause issues", t => {
+    const def = buildDefinition({
+      'items.{}.name': 'str',
+      'itemsmore.{}.name': 'bool',
+    })
+    confirmError(
+      def,
+      {
+        'items.0.name': true,
+      },
+      'INVALID items.0.name: true'
+    )
+    t.end()
+  })
 })
 
 test.skip('validation performance test (using large local file not checked in)', t => {
