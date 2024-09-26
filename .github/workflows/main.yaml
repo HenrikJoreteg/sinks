@@ -4,12 +4,12 @@ on: [pull_request, workflow_dispatch]
 
 jobs:
   has-increased-version:
-    runs-on: ubuntu:latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: henrikjoreteg/version-compare@main
   tests:
-    runs-on: ubuntu:latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Install modules
