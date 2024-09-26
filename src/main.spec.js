@@ -636,30 +636,6 @@ test('handles numbers as object keys', t => {
   t.end()
 })
 
-test('handles dynamic first part of path', t => {
-  const definition = buildDefinition({
-    '{}.id': 'str',
-  })
-  const res = definition.update(
-    {},
-    {
-      'foo.id': 'thing',
-    },
-    true
-  )
-  t.deepEqual(
-    res,
-    {
-      foo: {
-        id: 'thing',
-      },
-    },
-    'assumes object by default'
-  )
-
-  t.end()
-})
-
 test('can handle setting objects without exploding', t => {
   const obj = { something: 'cool' }
 

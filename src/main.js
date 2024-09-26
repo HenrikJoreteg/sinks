@@ -27,7 +27,7 @@ const buildMatcherFunction = definition => {
         }
         keysBeforeVariable.push(part)
       }
-      const startsWith = keysBeforeVariable.join('.')
+      const startsWith = keysBeforeVariable.join('.') + '.'
       if (!processed[startsWith]) {
         processed[startsWith] = []
       }
