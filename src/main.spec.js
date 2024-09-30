@@ -988,13 +988,21 @@ test.skip('validation performance test (using large local file not checked in)',
   // eslint-disable-next-line no-undef
   const { large, definition } = require('../large')
   const time = Date.now()
-  for (let i = 0; i < 100; i++) {
+  const amountToTest = 1000
+  const target = 16
+  for (let i = 0; i < amountToTest; i++) {
     definition.validate(large)
   }
   const diff = Date.now() - time
+  const avg = diff / amountToTest
   // eslint-disable-next-line no-console
-  console.log('diff', diff)
-  t.ok(diff < 300, true, 'took less than 300ms to do 100 times')
+  console.log('diff', diff, 'avg', avg)
+
+  t.ok(
+    avg < target,
+    true,
+    `took less than ${target}ms to do ${amountToTest} times`
+  )
 
   // make sure it errors as expected
   t.throws(

@@ -22,15 +22,16 @@ export const injectBrackets = str => {
 
 /**
  * As simple object deep equal that makes the following assumptions:
- * - no circular references
- * - no functions
- * - no complex objects like Date, Map, Set, etc.
- * keysToIgnore is an optional array of keys top level keys to
- * ignore for the comparison. This allows comparisons to ignore
- * large objects without having to copy and remove keys
- * @param {any} a first object
- * @param {any} b second object
- * @param {string[]} [keysToIgnore] optional array of top-level keys to ignore
+ *
+ * - No circular references
+ * - No functions
+ * - No complex objects like Date, Map, Set, etc. keysToIgnore is an optional
+ *   array of keys top level keys to ignore for the comparison. This allows
+ *   comparisons to ignore large objects without having to copy and remove keys
+ *
+ * @param {any} a First object
+ * @param {any} b Second object
+ * @param {string[]} [keysToIgnore] Optional array of top-level keys to ignore
  * @returns
  */
 export const simpleObjectDeepEqual = (a, b, keysToIgnore = []) => {

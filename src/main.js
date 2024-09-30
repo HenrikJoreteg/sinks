@@ -15,12 +15,21 @@ const toRegexp = str =>
   )
 
 const buildMatcherFunction = definition => {
-  const processed = {}
+  /**
+   * We first categorize them by length then by what the key starts with to be
+   * able to limit the number of items it has to test for each key.
+   */
+  const processedByLength = {}
   for (const key in definition) {
     const value = definition[key]
     if (key.includes('{}') || key.includes('[]')) {
       const split = key.split('.')
       const keysBeforeVariable = []
+      const length = split.length
+      if (!processedByLength[length]) {
+        processedByLength[length] = {}
+      }
+      const processed = processedByLength[length]
       for (const part of split) {
         if (part === '{}' || part === '[]') {
           break
@@ -43,6 +52,8 @@ const buildMatcherFunction = definition => {
     if (definition[path]) {
       return definition[path]
     }
+    const length = path.split('.').length
+    const processed = processedByLength[length]
     for (const key in processed) {
       if (path.startsWith(key)) {
         const limitedItemsToTest = processed[key]
@@ -57,12 +68,11 @@ const buildMatcherFunction = definition => {
 }
 
 /**
- *
- * @param {any} original the original object
- * @param {any} modified the modified one
+ * @param {any} original The original object
+ * @param {any} modified The modified one
  * @param {{
- *  includeDeletions?: boolean,
- *  ignoredKeys?: string[]
+ *   includeDeletions?: boolean
+ *   ignoredKeys?: string[]
  * }} [options]
  * @returns {any} Changes object or null
  */
