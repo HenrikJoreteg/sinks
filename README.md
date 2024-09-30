@@ -317,6 +317,7 @@ npm install sinks
 
 ## Change log
 
+- `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.
 - `3.1.2`: Bugfixes and 10x performance improvement of validate() function.
 - `3.1.1`: Now exporting `simpleObjectDeepEqual` as part of main export.
 - `3.1.0`: Added `simpleObjectDeepEqual` utility for lightweight object comparisons of simple objects.
