@@ -30,12 +30,14 @@
     "esm": "3.2.25",
     "microbundle": "0.13.0",
     "prettier": "2.2.1",
+    "prettier-plugin-jsdoc": "0.3.30",
     "tape": "5.0.1"
   },
   "prettier": {
     "semi": false,
     "arrowParens": "avoid",
-    "singleQuote": true
+    "singleQuote": true,
+    "jsdocParser": true
   },
   "dependencies": {
     "dlv": "1.1.3"
