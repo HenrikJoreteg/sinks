@@ -1,16 +1,17 @@
 {
   "name": "sinks",
-  "version": "3.1.5",
+  "version": "4.0.0",
   "description": "Tools for object sync (get it?!), validation, diffing, and immutable deep setting",
-  "source": "src/index.js",
-  "main": "./dist/index.js",
-  "module": "./dist/index.module.js",
-  "unpkg": "./dist/index.umd.js",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": "./src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "prepublishOnly": "npm run format && npm run lint && npm test && npm run build",
-    "build": "rm -rf ./dist && microbundle --no-compress",
-    "test-inspect": "node --inspect-brk definition.spec.js",
-    "test": "tsx node_modules/tape/bin/tape './src/**/*.spec.js'",
+    "prepublishOnly": "npm run format && npm run lint && npm test",
+    "test-inspect": "node --inspect-brk --test src/main.spec.js",
+    "test": "node --test src/*.spec.js",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -23,15 +24,16 @@
   "author": "",
   "license": "MIT",
   "files": [
-    "dist/*"
+    "src/basic-types.js",
+    "src/deep-set.js",
+    "src/index.js",
+    "src/main.js",
+    "src/utils.js"
   ],
   "devDependencies": {
     "eslint": "7.18.0",
-    "microbundle": "0.13.0",
     "prettier": "2.2.1",
-    "prettier-plugin-jsdoc": "0.3.30",
-    "tape": "5.0.1",
-    "tsx": "4.22.4"
+    "prettier-plugin-jsdoc": "0.3.30"
   },
   "prettier": {
     "semi": false,

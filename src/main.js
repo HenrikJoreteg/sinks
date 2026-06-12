@@ -1,13 +1,14 @@
 //@ts-check
-import deepSet from './deep-set'
-import { basicTypes } from './basic-types'
-import { injectBrackets, isEmpty, stripBrackets } from './utils'
+import deepSet from './deep-set.js'
+import { basicTypes } from './basic-types.js'
+import { injectBrackets, isEmpty, stripBrackets } from './utils.js'
 import dlv from 'dlv'
 
 const toRegexp = str =>
   new RegExp(
     '^' +
       str
+        // Convert definition wildcards into one-segment path matchers.
         .replace(/\./g, '\\.')
         .replace(/\{\}/g, '[^.]+')
         .replace(/\[\]/g, '\\d+') +

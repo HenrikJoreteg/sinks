@@ -4,7 +4,7 @@
 
 A set of simple utilities for defining, validating, updating, diffing, and ultimately syncing (get it?!) state stored as simple objects and arrays.
 
-Small enough for use in client-side code < 2kb. In fact, it's very handy if you're looking for a way to enforce more structure in redux reducers.
+Small enough for use in client-side code. In fact, it's very handy if you're looking for a way to enforce more structure in redux reducers.
 
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
 
@@ -24,11 +24,21 @@ It was designed to be part of a system where data stored as simple objects needs
 
 ## Main exports
 
+Sinks 4.0.0 is published as plain ESM source. Use ESM imports:
+
+```js
+import { buildDefinition, getChanges, updateObject } from 'sinks'
+```
+
+CommonJS `require('sinks')` is no longer supported.
+
 ### `getChanges(originalObject, finalState, {includeDeletions: true, ignoredKeys: []})`
 
 This will return an object containing changes that can be applied to another object using `updateObject()`. If there are no changes, returns `null`.
 
-You it takes an optional options object where you can opt out of including deletions and you can specify a list of top-level object keys to ignore.
+It takes an optional options object where you can opt out of including deletions and you can specify a list of top-level object keys to ignore.
+
+Because `null` is the deletion marker used by `updateObject()`, `getChanges()` treats explicit `null` tombstones and already-missing values as equivalent. It still reports `null` when an existing non-null value is deleted.
 
 ### `updateObject(currentObject, changes)`
 
@@ -309,6 +319,8 @@ console.log(startingObject === finalObject) // false
 npm test
 ```
 
+The test suite uses Node.js' built-in test runner. CI runs on Node.js 22, and the package requires Node.js 20 or newer.
+
 ## install
 
 ```
@@ -317,6 +329,7 @@ npm install sinks
 
 ## Change log
 
+- `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.
 - `3.1.2`: Bugfixes and 10x performance improvement of validate() function.

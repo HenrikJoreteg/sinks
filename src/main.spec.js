@@ -1,7 +1,7 @@
-import test from 'tape'
-import { removeNullAndEmpty } from './deep-set'
-import { buildDefinition, getChanges, updateObject } from './main'
-import { simpleObjectDeepEqual } from './utils'
+import { test } from './test-helpers.js'
+import { removeNullAndEmpty } from './deep-set.js'
+import { buildDefinition, getChanges, updateObject } from './main.js'
+import { simpleObjectDeepEqual } from './utils.js'
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -905,12 +905,7 @@ test('validate function behavior', t => {
       def.update({}, update)
       t.fail('should have thrown')
     } catch (e) {
-      // Function source strings can differ by runtime, so allow regex expectations for those messages.
-      if (expectedMessage instanceof RegExp) {
-        t.ok(expectedMessage.test(e.message), e.message)
-      } else {
-        t.equal(e.message, expectedMessage)
-      }
+      t.equal(e.message, expectedMessage)
     }
   }
   const confirmOk = (def, update) => {
@@ -952,7 +947,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      /^INVALID items\.0\.name: \(\)\s*=>\s*\{\}$/
+      'INVALID items.0.name: () => {}'
     )
     confirmOk(def, {
       'items.0.name': 'hi',
@@ -994,7 +989,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      /^INVALID items\.0\.name: \(\)\s*=>\s*\{\}$/
+      'INVALID items.0.name: () => {}'
     )
     confirmOk(def, {
       'items.0.name': 'hi',

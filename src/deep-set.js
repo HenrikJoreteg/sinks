@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import { isEmpty } from './utils'
+import { isEmpty } from './utils.js'
 const digitRe = /^\[\d+\]/
 
 export const removeNullAndEmpty = original => {
