@@ -1,5 +1,5 @@
-import test from 'tape'
-import { injectBrackets, simpleObjectDeepEqual } from './utils'
+import { test } from './test-helpers.js'
+import { injectBrackets, simpleObjectDeepEqual } from './utils.js'
 
 test('injectBrackets', t => {
   // we will never do this, but we don't want this function

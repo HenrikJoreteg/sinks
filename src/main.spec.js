@@ -1,7 +1,7 @@
-import test from 'tape'
-import { removeNullAndEmpty } from './deep-set'
-import { buildDefinition, getChanges, updateObject } from './main'
-import { simpleObjectDeepEqual } from './utils'
+import { test } from './test-helpers.js'
+import { removeNullAndEmpty } from './deep-set.js'
+import { buildDefinition, getChanges, updateObject } from './main.js'
+import { simpleObjectDeepEqual } from './utils.js'
 
 test('basic deep set value works', t => {
   const built = buildDefinition({
@@ -413,6 +413,81 @@ test('updating with empty nested values removes them', t => {
   t.end()
 })
 
+test('updates do not mutate source objects', t => {
+  const original = {
+    profile: {
+      name: 'old',
+      tags: ['one', { label: 'two' }],
+    },
+  }
+  const originalSnapshot = JSON.parse(JSON.stringify(original))
+
+  const updated = updateObject(original, {
+    'profile.name': 'new',
+    'profile.tags.[1].label': 'second',
+  })
+
+  t.deepEqual(original, originalSnapshot)
+  t.deepEqual(updated, {
+    profile: {
+      name: 'new',
+      tags: ['one', { label: 'second' }],
+    },
+  })
+  t.equal(updated === original, false)
+  t.equal(updated.profile === original.profile, false)
+  t.equal(updated.profile.tags === original.profile.tags, false)
+
+  const withDelete = {
+    profile: {
+      name: 'keep',
+      remove: 'gone',
+    },
+  }
+  const withDeleteSnapshot = JSON.parse(JSON.stringify(withDelete))
+
+  t.deepEqual(updateObject(withDelete, { 'profile.remove': null }), {
+    profile: {
+      name: 'keep',
+    },
+  })
+  t.deepEqual(withDelete, withDeleteSnapshot)
+
+  const definition = buildDefinition({
+    'settings.name': 'str',
+    'settings.nested.keep': 'str',
+    'settings.nested.extra': 'str',
+  })
+  const source = {
+    settings: {
+      name: 'old',
+      nested: {
+        keep: 'same',
+      },
+    },
+  }
+  const sourceSnapshot = JSON.parse(JSON.stringify(source))
+
+  t.deepEqual(
+    definition.update(source, {
+      'settings.name': 'new',
+      'settings.nested.extra': 'added',
+    }),
+    {
+      settings: {
+        name: 'new',
+        nested: {
+          keep: 'same',
+          extra: 'added',
+        },
+      },
+    }
+  )
+  t.deepEqual(source, sourceSnapshot)
+
+  t.end()
+})
+
 test('merge works', t => {
   const entries = [
     {
@@ -592,6 +667,33 @@ test('merge works', t => {
         },
       },
     },
+    {
+      description: 'missing value and null tombstone do not conflict',
+      definition: {
+        patientName: 'str',
+        'autoVitalRecords.{}.vitals.{}.value': 'num',
+      },
+      obj1: {
+        patientName: 'Henrik',
+      },
+      obj2: {
+        patientName: 'Henrik',
+        autoVitalRecords: {
+          cp_1: {
+            vitals: {
+              spo2: {
+                value: null,
+              },
+            },
+          },
+        },
+      },
+      expectedOutcome: {
+        updated: {
+          patientName: 'Henrik',
+        },
+      },
+    },
   ]
 
   entries.forEach(
@@ -698,6 +800,56 @@ test('getChanges with includeDeletion option', t => {
       { includeDeletions: true }
     ),
     { something: 'hi', somethingElse: 'bye', ok: null }
+  )
+
+  t.end()
+})
+
+test('getChanges treats null tombstones as missing values', t => {
+  t.equal(
+    getChanges({}, { ok: null }),
+    null,
+    'top-level null tombstones are not additions'
+  )
+
+  t.equal(
+    getChanges({}, { nested: { ok: null } }),
+    null,
+    'nested null tombstones are not additions'
+  )
+
+  t.equal(
+    getChanges({ nested: { ok: null } }, {}),
+    null,
+    'missing values are not deletions when original only has tombstones'
+  )
+
+  t.deepEqual(
+    getChanges(
+      { nested: { ok: 'hi', keep: true } },
+      { nested: { ok: null, keep: true } }
+    ),
+    { 'nested.ok': null },
+    'null still deletes an existing non-null value'
+  )
+
+  t.equal(
+    getChanges(
+      {},
+      {
+        autoVitalRecords: {
+          cp_1: {
+            vitals: {
+              spo2: {
+                value: null,
+              },
+            },
+          },
+        },
+      }
+    ),
+    null,
+    'deep deletion tombstones from case update payloads are equivalent to missing values'
   )
 
   t.end()
@@ -980,6 +1132,38 @@ test('validate function behavior', t => {
       },
       'INVALID items.0.name: true'
     )
+    t.end()
+  })
+
+  t.test('wildcards match the intended path segment type', t => {
+    const arrayDef = buildDefinition({
+      'items.[].name': 'str',
+    })
+    confirmOk(arrayDef, {
+      'items.[0].name': 'hi',
+    })
+    confirmError(
+      arrayDef,
+      {
+        'items.foo.name': 'hi',
+      },
+      'INVALID path: items.foo.name'
+    )
+
+    const objectDef = buildDefinition({
+      'items.{}.name': 'str',
+    })
+    confirmOk(objectDef, {
+      'items.foo.name': 'hi',
+    })
+    confirmError(
+      objectDef,
+      {
+        'items.foo.extra.name': 'hi',
+      },
+      'INVALID path: items.foo.extra.name'
+    )
+
     t.end()
   })
 })

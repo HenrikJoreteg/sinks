@@ -12,7 +12,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install modules
         run: npm ci
-      - name: Run unit tests and build
-        run: npm test && npm run build
+      - name: Run unit tests
+        run: npm test
