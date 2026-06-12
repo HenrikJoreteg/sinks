@@ -905,6 +905,7 @@ test('validate function behavior', t => {
       def.update({}, update)
       t.fail('should have thrown')
     } catch (e) {
+      // Function source strings can differ by runtime, so allow regex expectations for those messages.
       if (expectedMessage instanceof RegExp) {
         t.ok(expectedMessage.test(e.message), e.message)
       } else {
