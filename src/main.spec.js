@@ -905,7 +905,11 @@ test('validate function behavior', t => {
       def.update({}, update)
       t.fail('should have thrown')
     } catch (e) {
-      t.equal(e.message, expectedMessage)
+      if (expectedMessage instanceof RegExp) {
+        t.ok(expectedMessage.test(e.message), e.message)
+      } else {
+        t.equal(e.message, expectedMessage)
+      }
     }
   }
   const confirmOk = (def, update) => {
@@ -947,7 +951,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      'INVALID items.0.name: () => {}'
+      /^INVALID items\.0\.name: \(\)\s*=>\s*\{\}$/
     )
     confirmOk(def, {
       'items.0.name': 'hi',
@@ -989,7 +993,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      'INVALID items.0.name: () => {}'
+      /^INVALID items\.0\.name: \(\)\s*=>\s*\{\}$/
     )
     confirmOk(def, {
       'items.0.name': 'hi',

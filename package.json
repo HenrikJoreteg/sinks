@@ -1,6 +1,6 @@
 {
   "name": "sinks",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "description": "Tools for object sync (get it?!), validation, diffing, and immutable deep setting",
   "source": "src/index.js",
   "main": "./dist/index.js",
@@ -10,7 +10,7 @@
     "prepublishOnly": "npm run format && npm run lint && npm test && npm run build",
     "build": "rm -rf ./dist && microbundle --no-compress",
     "test-inspect": "node --inspect-brk definition.spec.js",
-    "test": "tape -r esm ./**/*.spec.js",
+    "test": "tsx node_modules/tape/bin/tape './src/**/*.spec.js'",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -27,11 +27,11 @@
   ],
   "devDependencies": {
     "eslint": "7.18.0",
-    "esm": "3.2.25",
     "microbundle": "0.13.0",
     "prettier": "2.2.1",
     "prettier-plugin-jsdoc": "0.3.30",
-    "tape": "5.0.1"
+    "tape": "5.0.1",
+    "tsx": "4.22.4"
   },
   "prettier": {
     "semi": false,
