@@ -703,6 +703,56 @@ test('getChanges with includeDeletion option', t => {
   t.end()
 })
 
+test('getChanges treats null tombstones as missing values', t => {
+  t.equal(
+    getChanges({}, { ok: null }),
+    null,
+    'top-level null tombstones are not additions'
+  )
+
+  t.equal(
+    getChanges({}, { nested: { ok: null } }),
+    null,
+    'nested null tombstones are not additions'
+  )
+
+  t.equal(
+    getChanges({ nested: { ok: null } }, {}),
+    null,
+    'missing values are not deletions when original only has tombstones'
+  )
+
+  t.deepEqual(
+    getChanges(
+      { nested: { ok: 'hi', keep: true } },
+      { nested: { ok: null, keep: true } }
+    ),
+    { 'nested.ok': null },
+    'null still deletes an existing non-null value'
+  )
+
+  t.equal(
+    getChanges(
+      {},
+      {
+        autoVitalRecords: {
+          cp_1: {
+            vitals: {
+              spo2: {
+                value: null,
+              },
+            },
+          },
+        },
+      }
+    ),
+    null,
+    'deep deletion tombstones from case update payloads are equivalent to missing values'
+  )
+
+  t.end()
+})
+
 test('can handle functions as values', t => {
   const definition = buildDefinition({
     things: 'func',

@@ -67,6 +67,19 @@ const buildMatcherFunction = definition => {
   }
 }
 
+const isNullTombstone = value => {
+  if (value === null) {
+    return true
+  }
+  if (typeof value !== 'object') {
+    return false
+  }
+  if (Array.isArray(value)) {
+    return value.every(isNullTombstone)
+  }
+  return Object.keys(value).every(key => isNullTombstone(value[key]))
+}
+
 /**
  * @param {any} original The original object
  * @param {any} modified The modified one
@@ -91,7 +104,7 @@ export const getChanges = (
     const inModified = modified && modified.hasOwnProperty(key)
     // removed in new
     if (inOriginal && !inModified) {
-      if (includeDeletions) {
+      if (includeDeletions && !isNullTombstone(original[key])) {
         changes[key] = null
       }
       continue
@@ -103,6 +116,9 @@ export const getChanges = (
 
     // checks if modified value is different in any way
     if (!inOriginal || modifiedValue !== original[key]) {
+      if (!inOriginal && isNullTombstone(modifiedValue)) {
+        continue
+      }
       if (modifiedValueIsObject && modifiedValue !== null) {
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
