@@ -114,6 +114,32 @@ for (const [name, update] of [
       })
     })
 
+    it('preserves object writes and deletions in a batch with array deletions', () => {
+      const before = {
+        name: 'Before',
+        profile: { name: 'Before' },
+        items: ['a', 'b', 'c', 'd'],
+      }
+      const changes = {
+        'items.[1]': null,
+        profile: null,
+        'items.[2]': 'C',
+        'profile.name': 'After',
+        name: null,
+        'items.[3]': null,
+      }
+
+      deepStrictEqual(update(before, changes), {
+        profile: { name: 'After' },
+        items: ['a', 'C'],
+      })
+      deepStrictEqual(before, {
+        name: 'Before',
+        profile: { name: 'Before' },
+        items: ['a', 'b', 'c', 'd'],
+      })
+    })
+
     it('keeps ordinary object update ordering and no-op batches unchanged', () => {
       const before = { name: 'Before' }
       deepStrictEqual(update(before, null), before)
