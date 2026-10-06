@@ -151,14 +151,14 @@ const getUpdateKeys = updateObj => {
   const keys = []
   const arrayDeletions = []
   for (const key in updateObj) {
-    if (updateObj[key] === null && /\[\d+\]/.test(key)) {
+    if (isNullTombstone(updateObj[key]) && /\[\d+\]/.test(key)) {
       arrayDeletions.push(key)
     } else {
       keys.push(key)
     }
   }
   // Apply writes before splicing, then delete highest indexes first. Nested
-  // deletions also need this order because cleaning empty entries can splice.
+  // deletions and empty values also need this order because cleanup can splice.
   arrayDeletions.sort((first, second) =>
     second.localeCompare(first, 'en', { numeric: true })
   )

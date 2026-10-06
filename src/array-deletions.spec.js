@@ -87,6 +87,33 @@ for (const [name, update] of [
       )
     })
 
+    it('keeps original indexes when empty cleanup and null deletions are mixed', () => {
+      const before = {
+        entries: [{ value: 'a' }, { value: 'b' }, { value: 'c' }],
+      }
+      for (const emptyValue of [[], [null], [[], { unused: null }]]) {
+        // Empty nested values remove their parent entry just like tombstones.
+        for (const changes of [
+          { 'entries.[1]': null, 'entries.[0].value': emptyValue },
+          { 'entries.[0].value': emptyValue, 'entries.[1]': null },
+        ]) {
+          deepStrictEqual(update(before, changes), {
+            entries: [{ value: 'c' }],
+          })
+        }
+        deepStrictEqual(
+          update(before, {
+            'entries.[0]': null,
+            'entries.[2].value': emptyValue,
+          }),
+          { entries: [{ value: 'b' }] }
+        )
+      }
+      deepStrictEqual(before, {
+        entries: [{ value: 'a' }, { value: 'b' }, { value: 'c' }],
+      })
+    })
+
     it('keeps ordinary object update ordering and no-op batches unchanged', () => {
       const before = { name: 'Before' }
       deepStrictEqual(update(before, null), before)
