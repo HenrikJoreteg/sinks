@@ -147,9 +147,27 @@ export const getChanges = (
 
 export const setValue = deepSet
 
+const getUpdateKeys = updateObj => {
+  const keys = []
+  const arrayDeletions = []
+  for (const key in updateObj) {
+    if (isNullTombstone(updateObj[key]) && /\[\d+\]/.test(key)) {
+      arrayDeletions.push(key)
+    } else {
+      keys.push(key)
+    }
+  }
+  // Apply writes before splicing, then delete highest indexes first. Nested
+  // deletions and empty values also need this order because cleanup can splice.
+  arrayDeletions.sort((first, second) =>
+    second.localeCompare(first, 'en', { numeric: true })
+  )
+  return [...keys, ...arrayDeletions]
+}
+
 export const updateObject = (obj, updateObj) => {
   let updated = obj
-  for (const key in updateObj) {
+  for (const key of getUpdateKeys(updateObj)) {
     updated = setValue(updated, key, updateObj[key], false)
   }
   return updated
@@ -254,7 +272,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
 
   const update = (obj, updateObj, validate = true) => {
     let updated = obj
-    for (const key in updateObj) {
+    for (const key of getUpdateKeys(updateObj)) {
       updated = setValue(updated, key, updateObj[key], false)
     }
     if (validate) {
