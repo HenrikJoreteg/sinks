@@ -20,14 +20,14 @@ for (const [name, update] of [
 ]) {
   describe(`${name}: array deletions`, () => {
     it('round-trips a shorter array through getChanges without mutating the input', () => {
-      const before = { items: ['weight', 'height', 'allergiesSummary'] }
-      const after = { items: ['weight'] }
+      const before = { items: ['first', 'second', 'third'] }
+      const after = { items: ['first'] }
       const changes = getChanges(before, after)
       // These ascending tombstones used to leave the final entry undeleted.
       deepStrictEqual(changes, { 'items.[1]': null, 'items.[2]': null })
       deepStrictEqual(update(before, changes), after)
       deepStrictEqual(before, {
-        items: ['weight', 'height', 'allergiesSummary'],
+        items: ['first', 'second', 'third'],
       })
       deepStrictEqual(changes, { 'items.[1]': null, 'items.[2]': null })
     })
