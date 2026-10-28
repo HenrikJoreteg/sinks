@@ -1,0 +1,67 @@
+name: Benchmarks
+
+on: [pull_request]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmarks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Record comparison context
+        env:
+          RESULT_DIRECTORY: ${{ runner.temp }}/sinks-benchmark
+        run: |
+          mkdir -p "$RESULT_DIRECTORY"
+          node <<'NODE'
+          const fs = require('node:fs')
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          fs.writeFileSync(process.env.RESULT_DIRECTORY + '/context.json', JSON.stringify({
+            schemaVersion: 1,
+            repository: event.repository.full_name,
+            pullRequest: event.number,
+            headRepository: event.pull_request.head.repo.full_name,
+            headSha: event.pull_request.head.sha,
+            baseSha: event.pull_request.base.sha,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+          }))
+          NODE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+      - name: Install baseline runtime dependencies
+        working-directory: baseline
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Install candidate runtime dependencies
+        working-directory: candidate
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Compare base and head
+        working-directory: candidate
+        env:
+          RESULT_DIRECTORY: ${{ runner.temp }}/sinks-benchmark
+        run: node scripts/benchmark.js --baseline ../baseline/src/index.js --sizes 1000,5000 --samples 9 --sample-ms 25 --json > "$RESULT_DIRECTORY/results.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sinks-benchmark-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sinks-benchmark/*.json
+          if-no-files-found: error
+          retention-days: 30

@@ -354,6 +354,13 @@ order. It reports median milliseconds per operation and candidate/baseline
 ratios; lower is faster. Fixture creation and module loading are excluded.
 These are Node.js CPU benchmarks; browser and application timings may differ.
 
+Pull requests also run the benchmark comparison in GitHub Actions against their
+base commit. The workflow saves JSON results and updates one PR comment with
+absolute times, ratios, and the tested commits. Timing differences are advisory;
+incorrect results or benchmark execution errors fail the benchmark job. A
+separate reporting workflow runs trusted default-branch code so forks can
+receive comments without granting write access to their benchmark code.
+
 ## install
 
 ```
