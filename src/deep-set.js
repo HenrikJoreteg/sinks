@@ -32,6 +32,9 @@ import {
   isEmpty,
 } from './utils.js'
 const digitRe = /^\[\d+\]$/
+// JavaScript array indexes end at 2^32 - 2. The next key (2^32 - 1) is a
+// named property instead of an array element, so JSON serialization omits it.
+const maxArrayIndex = 2 ** 32 - 2
 
 export const removeNullAndEmpty = original => {
   const removeEmpty = obj => {
@@ -99,16 +102,19 @@ export const applyValue = (source, keys, update, merge = true) => {
     const isLast = i === l - 1
     const currentKey = keys[i]
     if (Array.isArray(last)) {
+      // Dotted paths supply string keys; convert them for the numeric checks.
       const index = Number(currentKey)
       if (
         !Number.isInteger(index) ||
         index < 0 ||
-        index >= 4294967295 ||
+        index > maxArrayIndex ||
+        // "01", "1e0", and "" coerce to integers but are named properties.
         String(index) !== String(currentKey)
       ) {
         throw Error('INVALID array index')
       }
-      // Writes may replace an item or append, but cannot create sparse holes.
+      // Below length replaces an item; at length appends. Beyond length leaves
+      // holes. Deleting a missing final entry is a no-op, so it is allowed.
       if (index > last.length && !(shouldDelete && isLast)) {
         throw Error('INVALID array: cannot skip indexes')
       }
