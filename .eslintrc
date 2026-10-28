@@ -7,6 +7,13 @@
     "sourceType": "module",
     "allowImportExportEverywhere": true
   },
+  "overrides": [
+    {
+      "files": ["scripts/*.js"],
+      "parserOptions": { "ecmaVersion": 2020 },
+      "rules": { "no-console": 0 }
+    }
+  ],
   "rules": {
     "no-console": [2, { "allow": ["warn", "error", "info"] }],
     "no-prototype-builtins": [0]

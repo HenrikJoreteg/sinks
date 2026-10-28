@@ -12,6 +12,7 @@
     "prepublishOnly": "npm run format && npm run lint && npm test",
     "test-inspect": "node --inspect-brk --test src/main.spec.js",
     "test": "node --test src/*.spec.js",
+    "benchmark": "node scripts/benchmark.js",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

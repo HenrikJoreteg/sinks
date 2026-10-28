@@ -327,6 +327,33 @@ npm test
 
 The test suite uses Node.js' built-in test runner. CI runs on Node.js 22, and the package requires Node.js 20 or newer.
 
+## Benchmarks
+
+From a repository checkout, run `npm run benchmark` to measure updates, array
+edits, diffs, merges, schema validation, and replaying queued updates at multiple
+fixture sizes. To compare against another checkout, pass its entry file:
+
+```sh
+npm run benchmark -- --baseline ../sinks-main/src/index.js
+```
+
+To compare a published version, install it under an alias without changing the
+package manifest or lockfile:
+
+```sh
+npm install --no-save --package-lock=false sinks-baseline@npm:sinks@4.0.2
+npm run benchmark -- --baseline sinks-baseline
+```
+
+Use `--sizes 100,1000,5000`, `--filter array`, or `--samples 9` to adjust the run.
+`--candidate` selects a different candidate module; `--json` emits structured
+results (use `node scripts/benchmark.js --json` for JSON without npm's banner).
+Local checkouts need their runtime dependencies installed. The runner checks
+results before timing, warms each implementation, and alternates comparison
+order. It reports median milliseconds per operation and candidate/baseline
+ratios; lower is faster. Fixture creation and module loading are excluded.
+These are Node.js CPU benchmarks; browser and application timings may differ.
+
 ## install
 
 ```

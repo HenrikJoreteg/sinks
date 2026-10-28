@@ -72,11 +72,16 @@ export const removeNullAndEmpty = original => {
 }
 
 const copy = (source, isArr) => {
-  const to = Array.isArray(source) || isArr ? [] : {}
+  const isArray = Array.isArray(source) || isArr
+  const to = isArray ? [] : Object.create(null)
+  // Copy with no prototype so assignment cannot invoke an inherited setter,
+  // including __proto__. Restore the normal prototype only after all writes.
+  if (isArray) Object.setPrototypeOf(to, null)
   // Functions stay opaque values: never copy their prototype into a data branch.
   if (source !== null && typeof source === 'object') {
-    for (const key of Object.keys(source)) setOwnValue(to, key, source[key])
+    for (const key of Object.keys(source)) to[key] = source[key]
   }
+  Object.setPrototypeOf(to, isArray ? Array.prototype : Object.prototype)
   return to
 }
 
