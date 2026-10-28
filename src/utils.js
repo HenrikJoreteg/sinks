@@ -1,4 +1,9 @@
 const reservedSegments = new Set(['__proto__'])
+const hasOwnProperty = Object.prototype.hasOwnProperty
+
+// Keep own-property checks safe for shadowed names and runtimes that predate
+// Object.hasOwn. Calling an input object's hasOwnProperty would be unsafe.
+export const hasOwn = (object, key) => hasOwnProperty.call(object, key)
 
 export const isDataContainer = value => {
   if (value === null || typeof value !== 'object') return false
@@ -70,7 +75,7 @@ export const assertJsonData = value => {
     const toJSON = Object.getOwnPropertyDescriptor(value, 'toJSON')
     if (
       toJSON &&
-      (!Object.hasOwn(toJSON, 'value') || typeof toJSON.value === 'function')
+      (!hasOwn(toJSON, 'value') || typeof toJSON.value === 'function')
     ) {
       throw Error('INVALID JSON data: custom serialization')
     }
@@ -84,7 +89,7 @@ export const assertJsonData = value => {
       }
       const property = Object.getOwnPropertyDescriptor(value, key)
       // Reject executable properties instead of invoking getters during checks.
-      if (!Object.hasOwn(property, 'value')) {
+      if (!hasOwn(property, 'value')) {
         throw Error('INVALID JSON data: accessor property')
       }
       check(property.value, path ? path + '.' + key : key)
@@ -97,7 +102,7 @@ export const assertJsonData = value => {
 }
 
 export const getOwnValue = (object, key) => {
-  if (object != null && Object.hasOwn(object, key)) return object[key]
+  if (object != null && hasOwn(object, key)) return object[key]
 }
 
 export const isEmpty = unknown => {

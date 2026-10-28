@@ -4,6 +4,7 @@ import { basicTypes } from './basic-types.js'
 import {
   assertJsonData,
   getOwnValue,
+  hasOwn,
   injectBrackets,
   isDataContainer,
   isEmpty,
@@ -64,7 +65,7 @@ const buildMatcherFunction = definition => {
   }
 
   return path => {
-    if (Object.hasOwn(definition, path)) {
+    if (hasOwn(definition, path)) {
       return definition[path]
     }
     const length = path.split('.').length
@@ -92,6 +93,24 @@ const isNullTombstone = value => {
   return Object.keys(value).every(key => isNullTombstone(value[key]))
 }
 
+// Copy already-checked data using the setter's null/empty cleanup rules. A diff
+// must not mutate its input while constructing a replacement array.
+const copyCleanData = (value, copies = new WeakMap()) => {
+  if (!isDataContainer(value)) return value
+  if (copies.has(value)) return copies.get(value)
+
+  const isArray = Array.isArray(value)
+  const result = isArray ? [] : Object.create(Object.getPrototypeOf(value))
+  copies.set(value, result)
+  for (const key of Object.keys(value)) {
+    const cleaned = copyCleanData(value[key], copies)
+    if (cleaned === null || isEmpty(cleaned)) continue
+    if (isArray) result.push(cleaned)
+    else result[key] = cleaned
+  }
+  return result
+}
+
 /**
  * @param {any} original The original object
  * @param {any} modified The modified one
@@ -112,8 +131,8 @@ const getObjectChanges = (
     if (ignoredKeys && ignoredKeys.includes(key)) {
       continue
     }
-    const inOriginal = original && Object.hasOwn(original, key)
-    const inModified = modified && Object.hasOwn(modified, key)
+    const inOriginal = original && hasOwn(original, key)
+    const inModified = modified && hasOwn(modified, key)
     // removed in new
     if (inOriginal && !inModified) {
       if (includeDeletions && !isNullTombstone(original[key])) {
@@ -123,13 +142,41 @@ const getObjectChanges = (
     }
 
     // what type of value are we dealing with?
-    const modifiedValue = modified[key]
+    let modifiedValue = modified[key]
     const modifiedValueIsObject = typeof modifiedValue === 'object'
 
     // checks if modified value is different in any way
     if (!inOriginal || modifiedValue !== original[key]) {
-      if (!inOriginal && isNullTombstone(modifiedValue)) {
-        continue
+      if (isNullTombstone(modifiedValue)) {
+        if (!inOriginal || isNullTombstone(original[key])) continue
+        // Empty containers replace a scalar just like a null tombstone. There
+        // are no original child properties to express as individual deletions.
+        if (!isDataContainer(original[key])) {
+          changes[key] = null
+          continue
+        }
+      }
+      if (Array.isArray(modifiedValue)) {
+        const originalIsArray = inOriginal && Array.isArray(original[key])
+        const originalLength = originalIsArray ? original[key].length : 0
+        const newIndexes = Object.keys(modifiedValue).slice(originalLength)
+        if (newIndexes.some(index => isNullTombstone(modifiedValue[index]))) {
+          const additions = copyCleanData(
+            newIndexes.map(index => modifiedValue[index])
+          )
+          if (!originalIsArray) {
+            // Skipping a tombstone in a new array would leave a gap in its
+            // generated paths. Set the cleaned array as one complete value.
+            changes[key] = additions
+            continue
+          }
+          // Existing indexes keep their deletion semantics. Only compact the
+          // appended portion, where tombstones have no original item to delete.
+          const existing = Object.keys(modifiedValue)
+            .slice(0, originalLength)
+            .map(index => modifiedValue[index])
+          modifiedValue = existing.concat(additions)
+        }
       }
       if (modifiedValueIsObject && modifiedValue !== null) {
         // we pass through "ignored" for nested stuff, but not the ignored keys
@@ -221,7 +268,7 @@ export const mergeObjects = (obj1 = {}, obj2 = {}) => {
   const conflicts = {}
   const notConflicted = {}
   for (const key of Object.keys(addedByObj2)) {
-    if (Object.hasOwn(addedByObj1, key)) {
+    if (hasOwn(addedByObj1, key)) {
       const cleanedKey = stripBrackets(key)
       conflicts[key] = [
         getPathValue(obj1, cleanedKey),
@@ -232,7 +279,7 @@ export const mergeObjects = (obj1 = {}, obj2 = {}) => {
     }
   }
   for (const key of Object.keys(addedByObj1)) {
-    if (!Object.hasOwn(addedByObj2, key)) {
+    if (!hasOwn(addedByObj2, key)) {
       notConflicted[key] = addedByObj1[key]
     }
   }
@@ -270,7 +317,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           let found = false
           let passed = false
           for (const typeEntry of type) {
-            if (Object.hasOwn(fnsObject, typeEntry)) {
+            if (hasOwn(fnsObject, typeEntry)) {
               found = true
               if (fnsObject[typeEntry](value)) {
                 passed = true

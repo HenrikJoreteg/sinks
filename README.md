@@ -43,6 +43,22 @@ It takes an optional options object where you can opt out of including deletions
 
 Because `null` is the deletion marker used by `updateObject()`, `getChanges()` treats explicit `null` tombstones and already-missing values as equivalent. It still reports `null` when an existing non-null value is deleted.
 
+New arrays containing `null` or recursively empty entries are emitted as a
+cleaned whole-array value. This keeps the generated update dense and directly
+applicable:
+
+```js
+const changes = getChanges({}, { items: [null, 'new'] })
+// { items: ['new'] }
+updateObject({}, changes)
+// { items: ['new'] }
+```
+
+Edits to existing arrays remain granular. Existing indexes still identify the
+original entries for writes and deletions; null/empty entries in the appended
+portion do not reserve new slots. Diff generation does not mutate the supplied
+arrays while normalizing these additions.
+
 ### `updateObject(currentObject, changes)`
 
 This returns an updated object with changes applied. These changes need to be structured as an object of paths to update.
@@ -268,6 +284,10 @@ data containers. A missing branch is created fresh; Sinks never follows an
 inherited constructor. Sinks processes own enumerable string-keyed properties
 and does not copy or traverse inherited properties.
 
+Own-property checks use the built-in `Object.prototype.hasOwnProperty` through
+`call`, so they work with shadowed method names and null-prototype objects
+without requiring the newer `Object.hasOwn` API.
+
 #### Migrating to 5.0.0
 
 - Rename any `__proto__` data keys.
@@ -412,7 +432,7 @@ npm install sinks
 
 ## Change log
 
-- `5.0.0`: Breaking release enforcing JSON-compatible data across setters, updates, diffs, merges, schemas, and validation. Rejects functions, nested `undefined`, symbols, BigInt, non-finite numbers, circular references, sparse arrays, array metadata, accessors, custom serialization methods, and objects with custom prototypes. Removes the `func` type and makes `num` finite-only; custom validator functions remain supported as configuration. Missing object arguments still default to empty objects, and null/empty cleanup is preserved. Reserves `__proto__`, processes only own properties, and preserves literal `constructor`/`prototype` data fields and null-prototype objects. All data checks remain enabled when schema validation is disabled. Removes the `dlv` runtime dependency.
+- `5.0.0`: Breaking release enforcing JSON-compatible data across setters, updates, diffs, merges, schemas, and validation. Rejects functions, nested `undefined`, symbols, BigInt, non-finite numbers, circular references, sparse arrays, array metadata, accessors, custom serialization methods, and objects with custom prototypes. Removes the `func` type and makes `num` finite-only; custom validator functions remain supported as configuration. Missing object arguments still default to empty objects, and null/empty cleanup is preserved. Normalizes empty new array entries so generated updates apply without creating holes; existing array edits remain granular. Reserves `__proto__`, processes only own properties, and preserves literal `constructor`/`prototype` data fields and null-prototype objects. All data checks remain enabled when schema validation is disabled. Removes the `dlv` runtime dependency.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.

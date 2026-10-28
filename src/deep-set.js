@@ -28,6 +28,7 @@ import {
   assertJsonData,
   assertSafePath,
   getOwnValue,
+  hasOwn,
   isDataContainer,
   isEmpty,
 } from './utils.js'
@@ -48,7 +49,7 @@ export const removeNullAndEmpty = original => {
     if (isArray) {
       for (let i = 0, l = obj.length; i < l; i++) {
         // Sparse holes must not expose inherited array entries to cleanup.
-        if (!Object.hasOwn(obj, i)) continue
+        if (!hasOwn(obj, i)) continue
         const value = obj[i]
         if (value === null || isEmpty(value)) {
           obj.splice(i, 1)
