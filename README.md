@@ -2,11 +2,14 @@
 
 ![](https://img.shields.io/npm/dm/sinks.svg)![](https://img.shields.io/npm/v/sinks.svg)![](https://img.shields.io/npm/l/sinks.svg)
 
-A set of simple utilities for defining, validating, updating, diffing, and ultimately syncing (get it?!) state stored as simple objects and arrays.
+A set of simple utilities for defining, validating, updating, diffing, and ultimately syncing (get it?!) state stored as JSON-compatible objects and arrays.
 
 Small enough for use in client-side code. In fact, it's very handy if you're looking for a way to enforce more structure in redux reducers.
 
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
+
+Sinks 5.0.0 enforces a [JSON-compatible data contract](#json-compatible-data-500).
+Schema validation is optional; the data contract always applies.
 
 ## What does it do?
 
@@ -199,33 +202,85 @@ console.log(
 // }
 ```
 
-### Safe object keys and prototypes (5.0.0)
+### JSON-compatible data (5.0.0)
+
+Sinks works with data that can be stored and synchronized as JSON. Supported
+values are strings, finite numbers, booleans, `null`, plain objects,
+null-prototype objects, and dense arrays containing supported values. Repeated
+references to the same object are allowed; circular references are rejected.
+
+The following values are rejected, including when nested inside arrays or
+opaque `obj` fields:
+
+- Functions, `undefined`, symbols, and BigInt.
+- `NaN`, `Infinity`, and `-Infinity`.
+- Dates, Maps, Sets, typed arrays, class instances, and other objects with custom
+  prototypes. Arrays must have the ordinary array prototype.
+- Sparse arrays, named enumerable properties on arrays, and enumerable symbol
+  keys, which would lose information during JSON serialization.
+- Enumerable getters/setters and custom `toJSON` methods. Data properties must
+  contain values, rather than executable serialization behavior.
+
+These checks apply to source data, update values, diffs, merges, schemas, and
+validation, even when schema validation is disabled. Entire update batches are
+checked before edits are applied, including no-op batches and ignored diff
+fields. Invalid data throws an error; Sinks does not silently drop it or coerce
+it through a JSON round trip.
+
+The existing cleanup rules still apply: `null` deletes a value, and empty
+objects and arrays are removed after updates. JSON compatibility does not
+change these deletion semantics.
+
+#### Missing objects and array paths
+
+An omitted or `undefined` starting object is treated as `{}`. The same default
+applies to omitted comparison/merge objects and the object passed to
+`definition.validate()`. An omitted, `undefined`, or `null` update batch remains
+a no-op. `undefined` is never allowed as a field or array value; use `null` to
+delete a field.
+
+```js
+updateObject(undefined, { name: 'Henrik' }) // { name: 'Henrik' }
+updateObject({ name: 'Henrik' }, undefined) // unchanged
+setValue({}, 'name', undefined) // throws
+```
+
+Array paths can replace an existing entry or append at the array's current
+length. Skipping indexes throws because it would create a sparse array. Use
+`[0]` to start a new array, then `[1]`, and so on; numeric strings without
+brackets still create ordinary object keys when the branch is missing.
+
+```js
+setValue({}, 'items.[0].name', 'first') // { items: [{ name: 'first' }] }
+setValue({}, 'items.[1].name', 'second') // throws: skipped index 0
+```
+
+#### Reserved keys and prototypes
 
 Sinks reserves `__proto__`. It is rejected as a complete path segment or nested
-object key, including wildcard IDs and values inside arrays. The checks apply
-to source data, update values, diffs, merges, schemas, and validation, even when
-schema validation is disabled.
-Substrings such as `__proto__label` remain valid keys.
+object key, including wildcard IDs and values inside arrays. Substrings such as
+`__proto__label` remain valid keys.
 
 `constructor` and `prototype` are ordinary own data keys. They can be validated,
 set with string or array paths, diffed, and merged, including when used as
-wildcard IDs. Traversal only follows own data containers. A missing branch, or
-one containing a function, is replaced with a fresh container; Sinks never
-follows an inherited constructor or descends into a function's prototype.
+wildcard IDs and as object fields inside arrays. Traversal only follows own
+data containers. A missing branch is created fresh; Sinks never follows an
+inherited constructor. Sinks processes own enumerable string-keyed properties
+and does not copy or traverse inherited properties.
 
-This preserves literal fields as Lodash's merge helpers do. Sinks also permits
-safe dotted edits to these fields so generated diffs can be applied again;
-[Lodash's `set`](https://github.com/lodash/lodash/blob/4.18.1/lodash.js#L4025)
-instead stops on `constructor` and `prototype` path segments.
+#### Migrating to 5.0.0
 
-Objects must have the ordinary object prototype or a null prototype; arrays
-must have the ordinary array prototype. Objects with custom prototypes are
-rejected. Sinks only processes own enumerable properties and does not copy or
-traverse inherited properties. Existing function values remain supported by the
-`func` type; their own enumerable properties are also checked.
+- Rename any `__proto__` data keys.
+- Convert Dates to strings or numeric timestamps, Maps/Sets to objects or
+  arrays, and BigInt values to strings before passing them to Sinks.
+- Omit unavailable fields or use `null` for deletion instead of assigning
+  `undefined`. Supply dense arrays and finite numbers.
+- Keep functions outside synchronized data. The built-in `func` type has been
+  removed, and the `num` type now accepts only finite numbers.
 
-This is a deliberate security restriction: existing data with an `__proto__` key
-must be renamed before it can be processed by these operations.
+Custom validator functions remain supported as configuration through the second
+argument to `buildDefinition`. They validate JSON-compatible values and cannot
+override the data contract.
 
 ### `setValue(obj1, keyPath, updatedValue)`
 
@@ -357,7 +412,7 @@ npm install sinks
 
 ## Change log
 
-- `5.0.0`: Breaking security release. Reserves `__proto__` in paths and nested data, rejects objects with custom prototypes, and processes only own properties. Preserves literal `constructor` and `prototype` fields with own-property traversal; functions are never traversed into their prototypes. Safety checks remain enabled when schema validation is disabled. Supports null-prototype objects and ordinary keys that shadow Object.prototype methods during diffing and merging.
+- `5.0.0`: Breaking release enforcing JSON-compatible data across setters, updates, diffs, merges, schemas, and validation. Rejects functions, nested `undefined`, symbols, BigInt, non-finite numbers, circular references, sparse arrays, array metadata, accessors, custom serialization methods, and objects with custom prototypes. Removes the `func` type and makes `num` finite-only; custom validator functions remain supported as configuration. Missing object arguments still default to empty objects, and null/empty cleanup is preserved. Reserves `__proto__`, processes only own properties, and preserves literal `constructor`/`prototype` data fields and null-prototype objects. All data checks remain enabled when schema validation is disabled. Removes the `dlv` runtime dependency.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.
@@ -377,7 +432,7 @@ npm install sinks
 
 If you like this follow [@HenrikJoreteg](http://twitter.com/henrikjoreteg) on twitter.
 
-Props to [Jason Miller](https://github.com/developit) for [dlv](https://github.com/developit/dlv) (a dependency) and [Frank Wilkerson](https://github.com/fwilkerson) for [clean-set](https://github.com/fwilkerson/clean-set) which I modified and included here (along with his MIT license).
+Props to [Jason Miller](https://github.com/developit) for [dlv](https://github.com/developit/dlv), used in earlier releases, and [Frank Wilkerson](https://github.com/fwilkerson) for [clean-set](https://github.com/fwilkerson/clean-set) which I modified and included here (along with his MIT license).
 
 ## license
 

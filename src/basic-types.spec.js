@@ -10,6 +10,9 @@ test('basicTypes exposes expected validators', t => {
 
   t.equal(basicTypes.num(5), true)
   t.equal(basicTypes.num('5'), false)
+  t.equal(basicTypes.num(NaN), false)
+  t.equal(basicTypes.num(Infinity), false)
+  t.equal(basicTypes.num(-Infinity), false)
 
   t.equal(basicTypes.int(5), true)
   t.equal(basicTypes.int(5.5), false)
@@ -29,9 +32,7 @@ test('basicTypes exposes expected validators', t => {
   t.equal(basicTypes.obj([]), true)
   t.equal(basicTypes.obj('hi'), false)
 
-  const fn = () => {}
-  t.equal(basicTypes.func(fn), true)
-  t.equal(basicTypes.func({}), false)
+  t.equal(Object.hasOwn(basicTypes, 'func'), false)
 
   const isPrimaryColor = basicTypes.matches(['red', 'blue'])
   t.equal(isPrimaryColor('red'), true)

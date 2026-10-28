@@ -25,13 +25,13 @@ SOFTWARE.
 */
 
 import {
-  assertSafeObject,
+  assertJsonData,
   assertSafePath,
   getOwnValue,
   isDataContainer,
   isEmpty,
 } from './utils.js'
-const digitRe = /^\[\d+\]/
+const digitRe = /^\[\d+\]$/
 
 export const removeNullAndEmpty = original => {
   const removeEmpty = obj => {
@@ -74,8 +74,8 @@ export const removeNullAndEmpty = original => {
 
 const copy = (source, isArr) => {
   const to = Array.isArray(source) || isArr ? [] : {}
-  // Functions remain opaque values; never descend into their prototype fields.
-  if (isDataContainer(source)) {
+  // An object converted to an array must not carry over named properties.
+  if (isDataContainer(source) && (Array.isArray(source) || !isArr)) {
     for (const key of Object.keys(source)) to[key] = source[key]
   }
   return to
@@ -83,8 +83,10 @@ const copy = (source, isArr) => {
 
 // Internal batch setter: callers check all inputs before applying any changes.
 export const applyValue = (source, keys, update, merge = true) => {
-  keys.split && (keys = keys.split('.'))
-  keys = keys.map(key => (digitRe.test(key) ? Number(key.slice(1, -1)) : key))
+  if (typeof keys === 'string') keys = keys.split('.')
+  keys = Array.prototype.map.call(keys, key =>
+    digitRe.test(key) ? Number(key.slice(1, -1)) : key
+  )
 
   let next = copy(source),
     last = next,
@@ -96,6 +98,21 @@ export const applyValue = (source, keys, update, merge = true) => {
   for (; i < l; i++) {
     const isLast = i === l - 1
     const currentKey = keys[i]
+    if (Array.isArray(last)) {
+      const index = Number(currentKey)
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= 4294967295 ||
+        String(index) !== String(currentKey)
+      ) {
+        throw Error('INVALID array index')
+      }
+      // Writes may replace an item or append, but cannot create sparse holes.
+      if (index > last.length && !(shouldDelete && isLast)) {
+        throw Error('INVALID array: cannot skip indexes')
+      }
+    }
     const currentValue = getOwnValue(last, currentKey)
     if (shouldDelete && isLast) {
       if (Array.isArray(last)) {
@@ -125,9 +142,9 @@ export const applyValue = (source, keys, update, merge = true) => {
   return removeNullAndEmpty(next)
 }
 
-export default (source, keys, update, merge = true) => {
+export default (source = {}, keys, update, merge = true) => {
   assertSafePath(keys)
-  assertSafeObject(source)
-  assertSafeObject(update)
+  assertJsonData(source)
+  assertJsonData(update)
   return applyValue(source, keys, update, merge)
 }

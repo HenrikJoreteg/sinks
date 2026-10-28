@@ -221,34 +221,33 @@ it('getChanges rejects unsafe inputs before generating reusable update paths', (
   }
 })
 
-it('retains function values while checking their own enumerable data', () => {
+it('rejects functions as both data values and update batches', () => {
   const func = () => {}
-  const functions = buildDefinition({ callback: 'func' })
-  deepStrictEqual(functions.update({}, { callback: func }), { callback: func })
-  // Functions can also carry update keys; they must not bypass batch preflight.
+  const functions = buildDefinition(
+    { callback: 'anything' },
+    {
+      anything: () => true,
+    }
+  )
+  throws(() => functions.update({}, { callback: func }), /JSON-compatible/)
   func['__proto__.injected'] = 'forged'
   throws(() => updateObject({}, func), /INVALID/)
   throws(() => functions.update({}, { callback: func }, false), /INVALID/)
 })
 
-it('replaces function branches with data containers without visiting their prototypes', () => {
+it('rejects function branches without visiting or mutating their prototypes', () => {
   function supplied() {}
   supplied.extra = { name: 'function metadata' }
   const before = { constructor: supplied }
-  const after = { constructor: { prototype: { injected: 'data' } } }
-  // Neither supplied functions nor built-in constructors are traversal targets.
   for (const constructor of [supplied, Object, Array, Function]) {
-    deepStrictEqual(
-      setValue({ constructor }, 'constructor.prototype.injected', 'data'),
-      after
+    throws(
+      () => setValue({ constructor }, 'constructor.prototype.injected', 'data'),
+      /JSON-compatible/
     )
     equal(Object.hasOwn(constructor.prototype, 'injected'), false)
   }
-  const changes = getChanges(before, after)
-  deepStrictEqual(changes, { 'constructor.prototype.injected': 'data' })
-  deepStrictEqual(updateObject(before, changes), after)
-  // Merging an object onto a function-valued leaf also starts fresh.
-  deepStrictEqual(setValue(before, 'constructor', after.constructor), after)
+  throws(() => getChanges(before, {}), /JSON-compatible/)
+  throws(() => setValue(before, 'constructor', {}), /JSON-compatible/)
   deepStrictEqual(supplied.extra, { name: 'function metadata' })
   equal(before.constructor, supplied)
 })
@@ -358,7 +357,7 @@ it('ignores inherited enumerable properties throughout transformations', () => {
   }
 })
 
-it('does not clean inherited entries in sparse arrays', () => {
+it('rejects sparse arrays before cleanup can copy or mutate inherited entries', () => {
   const inherited = { name: 'inherited', untouched: null }
   Object.defineProperty(Array.prototype, '100', {
     value: inherited,
@@ -368,12 +367,14 @@ it('does not clean inherited entries in sparse arrays', () => {
   })
   try {
     const items = []
+    items[99] = null
     items[101] = { name: 'own' }
-    // Cleanup must skip holes rather than mutate the inherited entry.
-    const updated = setValue({}, 'items', items)
-    equal(Object.hasOwn(updated.items, 100), false)
+    // Reject before splice could materialize index 100 as an own entry.
+    throws(() => setValue({}, 'items', items), /INVALID array/)
+    equal(Object.hasOwn(items, 100), false)
+    equal(items[99], null)
     deepStrictEqual(inherited, { name: 'inherited', untouched: null })
-    deepStrictEqual(updated.items[101], { name: 'own' })
+    deepStrictEqual(items[101], { name: 'own' })
   } finally {
     delete Array.prototype[100]
   }

@@ -730,10 +730,10 @@ test('handles numbers as object keys', t => {
   )
 
   // can specifically set as array if need be
-  const res2 = updateObject({}, { 'something.[1].else': 'hi' })
-  const sparseArr = []
-  sparseArr[1] = { else: 'hi' }
-  t.deepEqual(res2, { something: sparseArr })
+  const res2 = updateObject({}, { 'something.[0].else': 'hi' })
+  t.deepEqual(res2, { something: [{ else: 'hi' }] })
+  // A skipped index would create a sparse array, outside the JSON data contract.
+  t.throws(() => updateObject({}, { 'something.[1].else': 'hi' }))
 
   t.end()
 })
@@ -851,19 +851,6 @@ test('getChanges treats null tombstones as missing values', t => {
     null,
     'deep deletion tombstones from case update payloads are equivalent to missing values'
   )
-
-  t.end()
-})
-
-test('can handle functions as values', t => {
-  const definition = buildDefinition({
-    things: 'func',
-  })
-
-  const func = () => {}
-
-  const res = definition.update({}, { things: func }, true)
-  t.deepEqual(res, { things: func })
 
   t.end()
 })
@@ -1049,7 +1036,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      'INVALID items.0.name: () => {}'
+      'INVALID items.0.name: function is not JSON-compatible'
     )
     confirmOk(def, {
       'items.0.name': 'hi',
@@ -1091,7 +1078,7 @@ test('validate function behavior', t => {
       {
         'items.0.name': () => {},
       },
-      'INVALID items.0.name: () => {}'
+      'INVALID items.0.name: function is not JSON-compatible'
     )
     confirmOk(def, {
       'items.0.name': 'hi',

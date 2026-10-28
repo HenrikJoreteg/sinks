@@ -8,9 +8,17 @@ export const isDataContainer = value => {
 }
 
 export const assertSafePath = path => {
-  const keys = Array.isArray(path) ? path : path.split('.')
-  for (const key of keys) {
+  if (typeof path !== 'string' && !Array.isArray(path)) {
+    throw Error('INVALID path')
+  }
+  if (Array.isArray(path)) assertJsonData(path)
+  const keys = typeof path === 'string' ? path.split('.') : path
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index]
     if (typeof key !== 'string' && typeof key !== 'number') {
+      throw Error('INVALID path segment')
+    }
+    if (typeof key === 'number' && !Number.isFinite(key)) {
       throw Error('INVALID path segment')
     }
     if (
@@ -23,20 +31,69 @@ export const assertSafePath = path => {
   }
 }
 
-export const assertSafeObject = value => {
-  if (
-    value === null ||
-    (typeof value !== 'object' && typeof value !== 'function')
-  )
-    return
-  if (typeof value === 'object' && !isDataContainer(value)) {
-    throw Error('INVALID object prototype')
+export const assertJsonData = value => {
+  const ancestors = new WeakSet()
+  const checked = new WeakSet()
+
+  const check = (value, path = '') => {
+    if (value === null) return
+    const type = typeof value
+    if (type === 'string' || type === 'boolean') return
+    if (type === 'number' && Number.isFinite(value)) return
+    if (type !== 'object') {
+      const kind = type === 'number' ? 'non-finite number' : type
+      throw Error(
+        `INVALID ${path || 'JSON data'}: ${kind} is not JSON-compatible`
+      )
+    }
+    if (!isDataContainer(value)) {
+      throw Error('INVALID object prototype')
+    }
+    if (ancestors.has(value)) {
+      throw Error('INVALID circular reference')
+    }
+    // Shared references are valid; only references to an ancestor are cycles.
+    if (checked.has(value)) return
+    ancestors.add(value)
+
+    const keys = Object.keys(value)
+    const isArray = Array.isArray(value)
+    if (isArray && keys.length !== value.length) {
+      throw Error('INVALID array: expected dense indexed data')
+    }
+    for (const symbol of Object.getOwnPropertySymbols(value)) {
+      if (Object.prototype.propertyIsEnumerable.call(value, symbol)) {
+        throw Error('INVALID JSON data: symbol key')
+      }
+    }
+    // JSON.stringify invokes toJSON even when it is non-enumerable.
+    const toJSON = Object.getOwnPropertyDescriptor(value, 'toJSON')
+    if (
+      toJSON &&
+      (!Object.hasOwn(toJSON, 'value') || typeof toJSON.value === 'function')
+    ) {
+      throw Error('INVALID JSON data: custom serialization')
+    }
+    for (const key of keys) {
+      assertSafePath(key)
+      if (
+        isArray &&
+        (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length)
+      ) {
+        throw Error('INVALID array: expected dense indexed data')
+      }
+      const property = Object.getOwnPropertyDescriptor(value, key)
+      // Reject executable properties instead of invoking getters during checks.
+      if (!Object.hasOwn(property, 'value')) {
+        throw Error('INVALID JSON data: accessor property')
+      }
+      check(property.value, path ? path + '.' + key : key)
+    }
+    ancestors.delete(value)
+    checked.add(value)
   }
-  // Inspect nested values too: an entire object or array can be one update.
-  for (const key of Object.keys(value)) {
-    assertSafePath(key)
-    assertSafeObject(value[key])
-  }
+
+  check(value)
 }
 
 export const getOwnValue = (object, key) => {

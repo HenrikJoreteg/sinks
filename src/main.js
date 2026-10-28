@@ -2,7 +2,7 @@
 import deepSet, { applyValue } from './deep-set.js'
 import { basicTypes } from './basic-types.js'
 import {
-  assertSafeObject,
+  assertJsonData,
   getOwnValue,
   injectBrackets,
   isDataContainer,
@@ -162,9 +162,9 @@ const getObjectChanges = (
  * @param {{ includeDeletions?: boolean; ignoredKeys?: string[] }} [options]
  * @returns {any} Changes object or null
  */
-export const getChanges = (original, modified, options = {}) => {
-  assertSafeObject(original)
-  assertSafeObject(modified)
+export const getChanges = (original = {}, modified = {}, options = {}) => {
+  assertJsonData(original)
+  assertJsonData(modified)
   return getObjectChanges(original, modified, options)
 }
 
@@ -188,10 +188,10 @@ const getUpdateKeys = updateObj => {
   return [...keys, ...arrayDeletions]
 }
 
-const applyUpdates = (obj, updateObj, merge) => {
+const applyUpdates = (obj = {}, updateObj = {}, merge) => {
   // Check the entire batch once, before path expansion or empty-value cleanup.
-  assertSafeObject(obj)
-  assertSafeObject(updateObj)
+  assertJsonData(obj)
+  assertJsonData(updateObj)
   let updated = obj
   for (const key of getUpdateKeys(updateObj)) {
     updated = applyValue(updated, key, updateObj[key], merge)
@@ -202,7 +202,7 @@ const applyUpdates = (obj, updateObj, merge) => {
 export const updateObject = (obj, updateObj) =>
   applyUpdates(obj, updateObj, false)
 
-export const mergeObjects = (obj1, obj2) => {
+export const mergeObjects = (obj1 = {}, obj2 = {}) => {
   const addedByObj2 = getChanges(obj1, obj2, { includeDeletions: false })
   const addedByObj1 = getChanges(obj2, obj1, { includeDeletions: false })
 
@@ -244,7 +244,7 @@ export const mergeObjects = (obj1, obj2) => {
 }
 
 export const buildDefinition = (definition, fnsObject = basicTypes) => {
-  assertSafeObject(definition)
+  assertJsonData(definition)
   const matcher = buildMatcherFunction(definition)
 
   const validateValues = (obj, path = '') => {
@@ -295,8 +295,8 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
     }
   }
 
-  const validateObject = (obj, path = '') => {
-    assertSafeObject(obj)
+  const validateObject = (obj = {}, path = '') => {
+    assertJsonData(obj)
     validateValues(obj, path)
   }
 
