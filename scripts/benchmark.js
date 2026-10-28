@@ -277,8 +277,16 @@ const main = async () => {
         const order = runs.map((run, position) => position)
         // Alternate which implementation goes first to reduce ordering bias.
         if (sample % 2) order.reverse()
-        for (const position of order)
-          timings[position].push(time(runs[position].run, iterations).ms)
+        for (const position of order) {
+          const measured = time(runs[position].run, iterations)
+          timings[position].push(measured.ms)
+          // Consume and verify the timed result after stopping the clock.
+          deepStrictEqual(
+            measured.result,
+            runs[position].expected,
+            name + ': incorrect result'
+          )
+        }
       }
       const medians = timings.map(median)
       const row = {

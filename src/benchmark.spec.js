@@ -35,7 +35,7 @@ it('benchmarks a local version and emits numeric comparison results', () => {
   strictEqual(Number.isFinite(report.results[0].ratio), true)
 })
 
-it('refuses to time an implementation that returns incorrect results', () => {
+it('rejects an implementation that returns incorrect results after warmup', () => {
   const directory = mkdtempSync(join(tmpdir(), 'sinks benchmark-'))
   const entry = join(directory, 'wrong.mjs')
   const source = pathToFileURL(resolve('src/index.js')).href
@@ -43,7 +43,9 @@ it('refuses to time an implementation that returns incorrect results', () => {
     entry,
     `export * from ${JSON.stringify(
       source
-    )}\nexport const setValue = () => ({ wrong: true })\n`
+    )}\nimport { setValue as real } from ${JSON.stringify(
+      source
+    )}\nlet calls = 0\nexport const setValue = (...args) => ++calls === 1 ? real(...args) : ({ wrong: true })\n`
   )
   try {
     const result = spawnSync(process.execPath, [...args, '--baseline', entry], {
