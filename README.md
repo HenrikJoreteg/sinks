@@ -8,6 +8,15 @@ Small enough for use in client-side code. In fact, it's very handy if you're loo
 
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
 
+Updates treat keys as own data properties. Names such as `__proto__`,
+`constructor`, and `prototype` remain literal data; paths never follow inherited
+properties or descend into a function's prototype. Copying, diffing, cleanup,
+and schema validation use own enumerable properties. These protections apply
+even when schema validation is disabled and do not require `Object.hasOwn`.
+
+The 4.0.3 security fix preserves the existing value types, validators, and array
+behavior. It does not introduce JSON-only validation or normalize array diffs.
+
 ## What does it do?
 
 It was designed to be part of a system where data stored as simple objects needs to be synchronized between servers and clients yet allow for disconnected changes and caching state locally then synchronizing it again when reconnected.
@@ -329,6 +338,7 @@ npm install sinks
 
 ## Change log
 
+- `4.0.3`: Security fix: define update keys as own data properties and follow only own fields. Prevents prototype injection while preserving literal `__proto__`, `constructor`, and `prototype` data keys. Functions remain opaque values when traversing paths. Schema and validator lookup use own entries; array deletion and cleanup never copy inherited entries through sparse holes. Replaces `dlv` with an own-property conflict reader. Existing value types and validators are unchanged.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.

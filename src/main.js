@@ -1,8 +1,22 @@
 //@ts-check
 import deepSet from './deep-set.js'
 import { basicTypes } from './basic-types.js'
-import { injectBrackets, isEmpty, stripBrackets } from './utils.js'
-import dlv from 'dlv'
+import {
+  getOwnValue,
+  hasOwn,
+  injectBrackets,
+  isEmpty,
+  setOwnValue,
+  stripBrackets,
+} from './utils.js'
+
+const getPathValue = (object, path) => {
+  for (const key of path.split('.')) {
+    if (object === null || typeof object !== 'object') return
+    object = getOwnValue(object, key)
+  }
+  return object
+}
 
 const toRegexp = str =>
   new RegExp(
@@ -20,15 +34,15 @@ const buildMatcherFunction = definition => {
    * We first categorize them by length then by what the key starts with to be
    * able to limit the number of items it has to test for each key.
    */
-  const processedByLength = {}
-  for (const key in definition) {
+  const processedByLength = Object.create(null)
+  for (const key of Object.keys(definition)) {
     const value = definition[key]
     if (key.includes('{}') || key.includes('[]')) {
       const split = key.split('.')
       const keysBeforeVariable = []
       const length = split.length
       if (!processedByLength[length]) {
-        processedByLength[length] = {}
+        processedByLength[length] = Object.create(null)
       }
       const processed = processedByLength[length]
       for (const part of split) {
@@ -50,12 +64,12 @@ const buildMatcherFunction = definition => {
   }
 
   return path => {
-    if (definition[path]) {
+    if (hasOwn(definition, path)) {
       return definition[path]
     }
     const length = path.split('.').length
     const processed = processedByLength[length]
-    for (const key in processed) {
+    for (const key of Object.keys(processed || {})) {
       if (path.startsWith(key)) {
         const limitedItemsToTest = processed[key]
         for (const { test, value } of limitedItemsToTest) {
@@ -74,9 +88,6 @@ const isNullTombstone = value => {
   }
   if (typeof value !== 'object') {
     return false
-  }
-  if (Array.isArray(value)) {
-    return value.every(isNullTombstone)
   }
   return Object.keys(value).every(key => isNullTombstone(value[key]))
 }
@@ -97,26 +108,27 @@ export const getChanges = (
 ) => {
   const combined = { ...original, ...modified }
   const changes = {}
-  for (const key in combined) {
+  for (const key of Object.keys(combined)) {
     if (ignoredKeys && ignoredKeys.includes(key)) {
       continue
     }
-    const inOriginal = original && original.hasOwnProperty(key)
-    const inModified = modified && modified.hasOwnProperty(key)
+    const inOriginal = original && hasOwn(original, key)
+    const inModified = modified && hasOwn(modified, key)
+    const originalValue = getOwnValue(original, key)
     // removed in new
     if (inOriginal && !inModified) {
-      if (includeDeletions && !isNullTombstone(original[key])) {
-        changes[key] = null
+      if (includeDeletions && !isNullTombstone(originalValue)) {
+        setOwnValue(changes, key, null)
       }
       continue
     }
 
     // what type of value are we dealing with?
-    const modifiedValue = modified[key]
+    const modifiedValue = getOwnValue(modified, key)
     const modifiedValueIsObject = typeof modifiedValue === 'object'
 
     // checks if modified value is different in any way
-    if (!inOriginal || modifiedValue !== original[key]) {
+    if (!inOriginal || modifiedValue !== originalValue) {
       if (!inOriginal && isNullTombstone(modifiedValue)) {
         continue
       }
@@ -124,21 +136,23 @@ export const getChanges = (
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
         const otherChanges = getChanges(
-          inOriginal ? original[key] : {},
+          inOriginal && typeof originalValue === 'object' ? originalValue : {},
           modifiedValue,
           {
             includeDeletions,
           }
         )
-        for (const otherKey in otherChanges) {
+        for (const otherKey of Object.keys(otherChanges || {})) {
           const value = otherChanges[otherKey]
           const isArray = Array.isArray(modified[key])
-          changes[
-            key + '.' + (isArray ? injectBrackets(otherKey) : otherKey)
-          ] = value
+          setOwnValue(
+            changes,
+            key + '.' + (isArray ? injectBrackets(otherKey) : otherKey),
+            value
+          )
         }
       } else {
-        changes[key] = modifiedValue
+        setOwnValue(changes, key, modifiedValue)
       }
     }
   }
@@ -150,7 +164,7 @@ export const setValue = deepSet
 const getUpdateKeys = updateObj => {
   const keys = []
   const arrayDeletions = []
-  for (const key in updateObj) {
+  for (const key of Object.keys(updateObj || {})) {
     if (isNullTombstone(updateObj[key]) && /\[\d+\]/.test(key)) {
       arrayDeletions.push(key)
     } else {
@@ -191,17 +205,20 @@ export const mergeObjects = (obj1, obj2) => {
   // look for keys that are the same
   const conflicts = {}
   const notConflicted = {}
-  for (const key in addedByObj2) {
-    if (addedByObj1.hasOwnProperty(key)) {
+  for (const key of Object.keys(addedByObj2)) {
+    if (hasOwn(addedByObj1, key)) {
       const cleanedKey = stripBrackets(key)
-      conflicts[key] = [dlv(obj1, cleanedKey), dlv(obj2, cleanedKey)]
+      setOwnValue(conflicts, key, [
+        getPathValue(obj1, cleanedKey),
+        getPathValue(obj2, cleanedKey),
+      ])
     } else {
-      notConflicted[key] = addedByObj2[key]
+      setOwnValue(notConflicted, key, addedByObj2[key])
     }
   }
-  for (const key in addedByObj1) {
-    if (!addedByObj2.hasOwnProperty(key)) {
-      notConflicted[key] = addedByObj1[key]
+  for (const key of Object.keys(addedByObj1)) {
+    if (!hasOwn(addedByObj2, key)) {
+      setOwnValue(notConflicted, key, addedByObj1[key])
     }
   }
   const toReturn = { updated: updateObject(obj1, notConflicted) }
@@ -215,7 +232,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   const matcher = buildMatcherFunction(definition)
 
   const validateObject = (obj, path = '') => {
-    for (const key in obj) {
+    for (const key of Object.keys(obj || {})) {
       const value = obj[key]
       if (value === null) {
         continue
@@ -237,7 +254,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           let found = false
           let passed = false
           for (const typeEntry of type) {
-            if (fnsObject[typeEntry]) {
+            if (hasOwn(fnsObject, typeEntry)) {
               found = true
               if (fnsObject[typeEntry](value)) {
                 passed = true
@@ -250,7 +267,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           }
           return
         } else {
-          testFn = fnsObject[type]
+          testFn = getOwnValue(fnsObject, type)
         }
         if (!testFn) {
           throw Error('INVALID type: ' + type)
