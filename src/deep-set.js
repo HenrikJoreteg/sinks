@@ -28,6 +28,7 @@ import {
   assertSafeObject,
   assertSafePath,
   getOwnValue,
+  isDataContainer,
   isEmpty,
 } from './utils.js'
 const digitRe = /^\[\d+\]/
@@ -73,7 +74,10 @@ export const removeNullAndEmpty = original => {
 
 const copy = (source, isArr) => {
   const to = Array.isArray(source) || isArr ? [] : {}
-  for (const key of Object.keys(source || {})) to[key] = source[key]
+  // Functions remain opaque values; never descend into their prototype fields.
+  if (isDataContainer(source)) {
+    for (const key of Object.keys(source)) to[key] = source[key]
+  }
   return to
 }
 
@@ -101,10 +105,14 @@ export const applyValue = (source, keys, update, merge = true) => {
       }
     } else {
       if (isLast) {
-        last[currentKey] =
-          typeof update === 'object' && !Array.isArray(update) && merge
-            ? Object.assign({}, currentValue, update)
-            : update
+        let nextValue = update
+        if (isDataContainer(update) && !Array.isArray(update) && merge) {
+          const previous = isDataContainer(currentValue)
+            ? currentValue
+            : undefined
+          nextValue = Object.assign({}, previous, update)
+        }
+        last[currentKey] = nextValue
       } else {
         last = last[currentKey] = copy(
           currentValue,

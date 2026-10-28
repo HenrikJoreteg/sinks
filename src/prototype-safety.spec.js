@@ -19,18 +19,20 @@ const definition = buildDefinition({
   injected: 'str',
   items: 'arr',
   'items.[].name': 'str',
+  'items.[].constructor': 'str',
+  'items.[].prototype': 'str',
   'records.{}.name': 'str',
+  'constructor.prototype.injected': 'str',
   payload: 'obj',
 })
 
 const unsafeObjects = [
   '{"__proto__":{"injected":"forged"}}',
   '{"__proto__.injected":"forged"}',
-  '{"constructor.prototype.injected":"forged"}',
-  '{"records.prototype.name":"forged"}',
-  '{"records":{"constructor":{"name":"forged"}}}',
+  '{"constructor.prototype.__proto__.injected":"forged"}',
+  '{"records":{"constructor":{"__proto__":{"injected":"forged"}}}}',
   '{"items":[{"name":"ok","__proto__":{"injected":"forged"}}]}',
-  '{"payload":{"prototype":{"injected":"forged"}}}',
+  '{"payload":{"prototype":{"__proto__":{"injected":"forged"}}}}',
   '{"\\u005f_proto__":{"injected":"forged"}}',
 ]
 
@@ -97,6 +99,30 @@ for (const [name, update] of [
       })
       deepStrictEqual(first.items, [{ name: 'first' }, { name: 'second' }])
     })
+
+    it('round-trips constructor and prototype fields through generated paths', () => {
+      const before = {
+        records: {
+          constructor: { name: 'before' },
+          prototype: { name: 'before' },
+        },
+        payload: { constructor: 'before', prototype: { name: 'before' } },
+      }
+      const after = {
+        records: {
+          constructor: { name: 'after' },
+          prototype: { name: 'after' },
+        },
+        payload: { constructor: 'after', prototype: { name: 'after' } },
+        items: [{ name: 'one', constructor: 'literal', prototype: 'literal' }],
+      }
+      // Sync must accept the same keys in nested data and generated dotted paths.
+      doesNotThrow(() => definition.validate(before))
+      doesNotThrow(() => definition.validate(after))
+      deepStrictEqual(update({}, after), after)
+      deepStrictEqual(update(before, getChanges(before, after)), after)
+      deepStrictEqual(before.records.constructor, { name: 'before' })
+    })
   })
 }
 
@@ -111,11 +137,10 @@ for (const [name, set] of [
   it(`${name} guards string and array paths and recursively checks values`, () => {
     for (const path of [
       '__proto__.injected',
-      'constructor.prototype.injected',
-      'records.prototype.name',
+      'constructor.prototype.__proto__.injected',
       ['__proto__', 'injected'],
-      ['records', 'constructor', 'name'],
-      ['records', 'prototype', 'name'],
+      ['records', 'constructor', '__proto__', 'name'],
+      ['records', 'prototype', '__proto__', 'name'],
     ]) {
       throws(() => set({}, path, 'forged'), /INVALID reserved path segment/)
     }
@@ -127,6 +152,21 @@ for (const [name, set] of [
     deepStrictEqual(set({}, ['items', 0, 'name'], 'first'), {
       items: [{ name: 'first' }],
     })
+  })
+
+  it(`${name} edits literal constructor and prototype IDs without following inheritance`, () => {
+    for (const key of ['constructor', 'prototype']) {
+      for (const path of [`records.${key}.name`, ['records', key, 'name']]) {
+        deepStrictEqual(set({}, path, 'data'), {
+          records: { [key]: { name: 'data' } },
+        })
+      }
+    }
+    // An absent own constructor starts a data branch instead of resolving Object.
+    deepStrictEqual(set({}, 'constructor.prototype.injected', 'data'), {
+      constructor: { prototype: { injected: 'data' } },
+    })
+    equal(Object.hasOwn(Object.prototype, 'injected'), false)
   })
 }
 
@@ -149,6 +189,28 @@ for (const [name, merge] of [
     throws(() => merge({}, inherited), /INVALID object prototype/)
     throws(() => merge(inherited, {}), /INVALID object prototype/)
   })
+
+  it(`${name} preserves literal fields and reports their conflicts`, () => {
+    const first = {
+      records: { constructor: { name: 'first' } },
+      payload: { constructor: { prototype: { name: 'first' } } },
+    }
+    const second = {
+      records: { constructor: { name: 'second' }, prototype: { name: 'new' } },
+      payload: { constructor: { prototype: { name: 'second' } } },
+    }
+    deepStrictEqual(merge(first, second), {
+      updated: {
+        ...first,
+        records: { constructor: { name: 'first' }, prototype: { name: 'new' } },
+      },
+      conflicts: {
+        'records.constructor.name': ['first', 'second'],
+        'payload.constructor.prototype.name': ['first', 'second'],
+      },
+    })
+    equal(Object.hasOwn(Object.prototype, 'name'), false)
+  })
 }
 
 it('getChanges rejects unsafe inputs before generating reusable update paths', () => {
@@ -169,6 +231,44 @@ it('retains function values while checking their own enumerable data', () => {
   throws(() => functions.update({}, { callback: func }, false), /INVALID/)
 })
 
+it('replaces function branches with data containers without visiting their prototypes', () => {
+  function supplied() {}
+  supplied.extra = { name: 'function metadata' }
+  const before = { constructor: supplied }
+  const after = { constructor: { prototype: { injected: 'data' } } }
+  // Neither supplied functions nor built-in constructors are traversal targets.
+  for (const constructor of [supplied, Object, Array, Function]) {
+    deepStrictEqual(
+      setValue({ constructor }, 'constructor.prototype.injected', 'data'),
+      after
+    )
+    equal(Object.hasOwn(constructor.prototype, 'injected'), false)
+  }
+  const changes = getChanges(before, after)
+  deepStrictEqual(changes, { 'constructor.prototype.injected': 'data' })
+  deepStrictEqual(updateObject(before, changes), after)
+  // Merging an object onto a function-valued leaf also starts fresh.
+  deepStrictEqual(setValue(before, 'constructor', after.constructor), after)
+  deepStrictEqual(supplied.extra, { name: 'function metadata' })
+  equal(before.constructor, supplied)
+})
+
+it('supports explicit schema fields and type names called constructor and prototype', () => {
+  const fields = buildDefinition(
+    { constructor: 'constructor', prototype: 'prototype' },
+    { constructor: basicTypes.str, prototype: basicTypes.str }
+  )
+  deepStrictEqual(fields.update({}, { constructor: 'one', prototype: 'two' }), {
+    constructor: 'one',
+    prototype: 'two',
+  })
+  // An inherited Object constructor must never be mistaken for a type validator.
+  throws(
+    () => buildDefinition({ note: 'constructor' }).validate({ note: 'x' }),
+    /INVALID type/
+  )
+})
+
 it('allows substrings of reserved names and object fields named pop', () => {
   const data = {
     constructorName: 'ordinary',
@@ -187,11 +287,7 @@ it('validation rejects reserved keys even inside opaque object fields', () => {
   for (const json of unsafeObjects) {
     throws(() => definition.validate(JSON.parse(json)), /INVALID/)
   }
-  for (const path of [
-    'constructor',
-    'records.prototype.name',
-    '__proto__.name',
-  ]) {
+  for (const path of ['__proto__.name', 'records.constructor.__proto__.name']) {
     throws(() => buildDefinition({ [path]: 'str' }), /INVALID/)
   }
   throws(

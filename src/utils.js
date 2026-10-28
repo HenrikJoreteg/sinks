@@ -1,4 +1,11 @@
-const reservedSegments = new Set(['__proto__', 'constructor', 'prototype'])
+const reservedSegments = new Set(['__proto__'])
+
+export const isDataContainer = value => {
+  if (value === null || typeof value !== 'object') return false
+  const prototype = Object.getPrototypeOf(value)
+  if (Array.isArray(value)) return prototype === Array.prototype
+  return prototype === null || prototype === Object.prototype
+}
 
 export const assertSafePath = path => {
   const keys = Array.isArray(path) ? path : path.split('.')
@@ -22,15 +29,8 @@ export const assertSafeObject = value => {
     (typeof value !== 'object' && typeof value !== 'function')
   )
     return
-  if (typeof value === 'object') {
-    const prototype = Object.getPrototypeOf(value)
-    const expectedPrototype = Array.isArray(value)
-      ? Array.prototype
-      : Object.prototype
-    const isNullPrototypeObject = prototype === null && !Array.isArray(value)
-    if (prototype !== expectedPrototype && !isNullPrototypeObject) {
-      throw Error('INVALID object prototype')
-    }
+  if (typeof value === 'object' && !isDataContainer(value)) {
+    throw Error('INVALID object prototype')
   }
   // Inspect nested values too: an entire object or array can be one update.
   for (const key of Object.keys(value)) {

@@ -5,12 +5,16 @@ import {
   assertSafeObject,
   getOwnValue,
   injectBrackets,
+  isDataContainer,
   isEmpty,
   stripBrackets,
 } from './utils.js'
 
 const getPathValue = (object, path) => {
-  for (const key of path.split('.')) object = getOwnValue(object, key)
+  for (const key of path.split('.')) {
+    if (!isDataContainer(object)) return
+    object = getOwnValue(object, key)
+  }
   return object
 }
 
@@ -131,7 +135,7 @@ const getObjectChanges = (
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
         const otherChanges = getObjectChanges(
-          inOriginal ? original[key] : {},
+          inOriginal && isDataContainer(original[key]) ? original[key] : {},
           modifiedValue,
           {
             includeDeletions,
