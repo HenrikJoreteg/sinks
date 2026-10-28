@@ -1,8 +1,10 @@
 //@ts-check
-import deepSet, { applyValue } from './deep-set.js'
+import deepSet, { applyValue, removeNullAndEmpty } from './deep-set.js'
 import { basicTypes } from './basic-types.js'
 import {
   assertJsonData,
+  assertSafeContainer,
+  getDataKeys,
   getOwnValue,
   hasOwn,
   injectBrackets,
@@ -90,25 +92,9 @@ const isNullTombstone = value => {
   if (typeof value !== 'object') {
     return false
   }
-  return Object.keys(value).every(key => isNullTombstone(value[key]))
-}
-
-// Copy already-checked data using the setter's null/empty cleanup rules. A diff
-// must not mutate its input while constructing a replacement array.
-const copyCleanData = (value, copies = new WeakMap()) => {
-  if (!isDataContainer(value)) return value
-  if (copies.has(value)) return copies.get(value)
-
-  const isArray = Array.isArray(value)
-  const result = isArray ? [] : Object.create(Object.getPrototypeOf(value))
-  copies.set(value, result)
-  for (const key of Object.keys(value)) {
-    const cleaned = copyCleanData(value[key], copies)
-    if (cleaned === null || isEmpty(cleaned)) continue
-    if (isArray) result.push(cleaned)
-    else result[key] = cleaned
-  }
-  return result
+  return Object.keys(value).every(key =>
+    isNullTombstone(getOwnValue(value, key))
+  )
 }
 
 /**
@@ -125,7 +111,11 @@ const getObjectChanges = (
   modified,
   { includeDeletions = true, ignoredKeys } = {}
 ) => {
-  const combined = { ...original, ...modified }
+  // Only visit compared branches. Unchanged state is expected to have already
+  // been validated; own-key guards still protect every generated update path.
+  const combined = Object.create(null)
+  for (const key of getDataKeys(original)) combined[key] = true
+  for (const key of getDataKeys(modified)) combined[key] = true
   const changes = {}
   for (const key of Object.keys(combined)) {
     if (ignoredKeys && ignoredKeys.includes(key)) {
@@ -135,35 +125,43 @@ const getObjectChanges = (
     const inModified = modified && hasOwn(modified, key)
     // removed in new
     if (inOriginal && !inModified) {
-      if (includeDeletions && !isNullTombstone(original[key])) {
+      if (includeDeletions && !isNullTombstone(getOwnValue(original, key))) {
         changes[key] = null
       }
       continue
     }
 
     // what type of value are we dealing with?
-    let modifiedValue = modified[key]
+    const originalValue = getOwnValue(original, key)
+    let modifiedValue = getOwnValue(modified, key)
     const modifiedValueIsObject = typeof modifiedValue === 'object'
 
     // checks if modified value is different in any way
-    if (!inOriginal || modifiedValue !== original[key]) {
+    if (!inOriginal || modifiedValue !== originalValue) {
+      if (modifiedValueIsObject) assertSafeContainer(modifiedValue)
       if (isNullTombstone(modifiedValue)) {
-        if (!inOriginal || isNullTombstone(original[key])) continue
+        if (!inOriginal || isNullTombstone(originalValue)) continue
         // Empty containers replace a scalar just like a null tombstone. There
         // are no original child properties to express as individual deletions.
-        if (!isDataContainer(original[key])) {
+        if (!isDataContainer(originalValue)) {
           changes[key] = null
           continue
         }
       }
       if (Array.isArray(modifiedValue)) {
-        const originalIsArray = inOriginal && Array.isArray(original[key])
-        const originalLength = originalIsArray ? original[key].length : 0
+        const originalIsArray = inOriginal && Array.isArray(originalValue)
+        const originalLength = originalIsArray ? originalValue.length : 0
         const newIndexes = Object.keys(modifiedValue).slice(originalLength)
-        if (newIndexes.some(index => isNullTombstone(modifiedValue[index]))) {
-          const additions = copyCleanData(
-            newIndexes.map(index => modifiedValue[index])
+        if (
+          newIndexes.some(index =>
+            isNullTombstone(getOwnValue(modifiedValue, index))
           )
+        ) {
+          const incoming = newIndexes.map(index =>
+            getOwnValue(modifiedValue, index)
+          )
+          assertJsonData(incoming)
+          const additions = removeNullAndEmpty(incoming)
           if (!originalIsArray) {
             // Skipping a tombstone in a new array would leave a gap in its
             // generated paths. Set the cleaned array as one complete value.
@@ -174,7 +172,7 @@ const getObjectChanges = (
           // appended portion, where tombstones have no original item to delete.
           const existing = Object.keys(modifiedValue)
             .slice(0, originalLength)
-            .map(index => modifiedValue[index])
+            .map(index => getOwnValue(modifiedValue, index))
           modifiedValue = existing.concat(additions)
         }
       }
@@ -182,7 +180,7 @@ const getObjectChanges = (
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
         const otherChanges = getObjectChanges(
-          inOriginal && isDataContainer(original[key]) ? original[key] : {},
+          inOriginal && isDataContainer(originalValue) ? originalValue : {},
           modifiedValue,
           {
             includeDeletions,
@@ -190,12 +188,13 @@ const getObjectChanges = (
         )
         for (const otherKey of Object.keys(otherChanges || {})) {
           const value = otherChanges[otherKey]
-          const isArray = Array.isArray(modified[key])
+          const isArray = Array.isArray(modifiedValue)
           changes[
             key + '.' + (isArray ? injectBrackets(otherKey) : otherKey)
           ] = value
         }
       } else {
+        assertJsonData(modifiedValue)
         changes[key] = modifiedValue
       }
     }
@@ -210,8 +209,6 @@ const getObjectChanges = (
  * @returns {any} Changes object or null
  */
 export const getChanges = (original = {}, modified = {}, options = {}) => {
-  assertJsonData(original)
-  assertJsonData(modified)
   return getObjectChanges(original, modified, options)
 }
 
@@ -235,32 +232,45 @@ const getUpdateKeys = updateObj => {
   return [...keys, ...arrayDeletions]
 }
 
-const applyUpdates = (obj = {}, updateObj = {}, merge) => {
-  // Check the entire batch once, before path expansion or empty-value cleanup.
-  assertJsonData(obj)
-  assertJsonData(updateObj)
+const applyCheckedUpdates = (obj, updateObj, merge) => {
   let updated = obj
+  // Cleanup is immutable, so unchanged branches need only be visited once.
+  const cleanedValues = new WeakMap()
   for (const key of getUpdateKeys(updateObj)) {
-    updated = applyValue(updated, key, updateObj[key], merge)
+    updated = applyValue(
+      updated,
+      key,
+      getOwnValue(updateObj, key),
+      merge,
+      cleanedValues
+    )
   }
   return updated
+}
+
+const applyUpdates = (obj = {}, updateObj = {}, merge) => {
+  assertSafeContainer(obj)
+  // Reject the entire incoming batch before editing. Existing state is checked
+  // locally when containers are copied, traversed, or cleaned.
+  assertJsonData(updateObj)
+  return applyCheckedUpdates(obj, updateObj, merge)
 }
 
 export const updateObject = (obj, updateObj) =>
   applyUpdates(obj, updateObj, false)
 
 export const mergeObjects = (obj1 = {}, obj2 = {}) => {
-  const addedByObj2 = getChanges(obj1, obj2, { includeDeletions: false })
-  const addedByObj1 = getChanges(obj2, obj1, { includeDeletions: false })
+  const addedByObj2 = getObjectChanges(obj1, obj2, { includeDeletions: false })
+  const addedByObj1 = getObjectChanges(obj2, obj1, { includeDeletions: false })
 
   if (!addedByObj1 && !addedByObj2) {
     return { updated: obj1 }
   }
   if (!addedByObj1) {
-    return { updated: updateObject(obj1, addedByObj2) }
+    return { updated: applyCheckedUpdates(obj1, addedByObj2, false) }
   }
   if (!addedByObj2) {
-    return { updated: updateObject(obj2, addedByObj1) }
+    return { updated: applyCheckedUpdates(obj2, addedByObj1, false) }
   }
 
   // both made additions, there may be conflicts
@@ -283,7 +293,7 @@ export const mergeObjects = (obj1 = {}, obj2 = {}) => {
       notConflicted[key] = addedByObj1[key]
     }
   }
-  const toReturn = { updated: updateObject(obj1, notConflicted) }
+  const toReturn = { updated: applyCheckedUpdates(obj1, notConflicted, false) }
   if (!isEmpty(conflicts)) {
     toReturn.conflicts = conflicts
   }
@@ -295,8 +305,8 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   const matcher = buildMatcherFunction(definition)
 
   const validateValues = (obj, path = '') => {
-    for (const key of Object.keys(obj || {})) {
-      const value = obj[key]
+    for (const key of getDataKeys(obj)) {
+      const value = getOwnValue(obj, key)
       if (value === null) {
         continue
       }
@@ -330,7 +340,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           }
           return
         } else {
-          testFn = getOwnValue(fnsObject, type)
+          testFn = hasOwn(fnsObject, type) ? fnsObject[type] : undefined
         }
         if (!testFn) {
           throw Error('INVALID type: ' + type)
@@ -350,7 +360,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   const setValue = (obj, path, value, validate = true) => {
     const updated = deepSet(obj, path, value)
     if (validate) {
-      validateObject(updated)
+      validateValues(updated)
     }
     return updated
   }
@@ -358,7 +368,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   const update = (obj, updateObj, validate = true) => {
     const updated = applyUpdates(obj, updateObj, true)
     if (validate) {
-      validateObject(updated)
+      validateValues(updated)
     }
     return updated
   }
@@ -366,7 +376,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   const merge = (obj1, obj2, validate = true) => {
     const result = mergeObjects(obj1, obj2)
     if (validate) {
-      validateObject(result.updated)
+      validateValues(result.updated)
     }
     return result
   }

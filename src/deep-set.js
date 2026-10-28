@@ -26,9 +26,10 @@ SOFTWARE.
 
 import {
   assertJsonData,
+  assertSafeContainer,
   assertSafePath,
+  getDataKeys,
   getOwnValue,
-  hasOwn,
   isDataContainer,
   isEmpty,
 } from './utils.js'
@@ -37,56 +38,75 @@ const digitRe = /^\[\d+\]$/
 // named property instead of an array element, so JSON serialization omits it.
 const maxArrayIndex = 2 ** 32 - 2
 
-export const removeNullAndEmpty = original => {
-  const removeEmpty = obj => {
-    const isObj = typeof obj === 'object'
-    const isArray = Array.isArray(obj)
-
-    if (!isObj) {
-      return obj
+export const removeNullAndEmpty = (original, cleanedValues = new WeakMap()) => {
+  const removeEmpty = value => {
+    if (value === null || typeof value !== 'object') return value
+    if (cleanedValues.has(value)) {
+      const cleaned = cleanedValues.get(value)
+      if (cleaned === null) throw Error('INVALID circular reference')
+      return cleaned
     }
-
-    if (isArray) {
-      for (let i = 0, l = obj.length; i < l; i++) {
-        // Sparse holes must not expose inherited array entries to cleanup.
-        if (!hasOwn(obj, i)) continue
-        const value = obj[i]
-        if (value === null || isEmpty(value)) {
-          obj.splice(i, 1)
-          removeEmpty(original)
-        } else {
-          removeEmpty(value)
+    const keys = getDataKeys(value)
+    // Null marks an ancestor being visited; completed entries preserve aliases.
+    cleanedValues.set(value, null)
+    const isArray = Array.isArray(value)
+    let result = value
+    let nextIndex = 0
+    for (const key of keys) {
+      const current = getOwnValue(value, key)
+      const cleaned = removeEmpty(current)
+      const shouldRemove = cleaned === null || isEmpty(cleaned)
+      if (
+        shouldRemove ||
+        cleaned !== current ||
+        (isArray && nextIndex !== Number(key))
+      ) {
+        if (result === value) {
+          const container = isArray
+            ? []
+            : Object.create(Object.getPrototypeOf(value))
+          result = copyOwnFields(value, container)
         }
       }
-    } else {
-      for (const key of Object.keys(obj || {})) {
-        const value = obj[key]
-        if (value === null || isEmpty(value)) {
-          delete obj[key]
-          removeEmpty(original)
-        } else {
-          removeEmpty(value)
-        }
+      if (shouldRemove) {
+        if (!isArray) delete result[key]
+      } else {
+        if (result !== value) result[isArray ? nextIndex : key] = cleaned
+        nextIndex++
       }
     }
-
-    return obj
+    if (isArray && result !== value) result.length = nextIndex
+    cleanedValues.set(value, result)
+    // Immutable results can be reused by later edits in the same batch.
+    if (result !== value) cleanedValues.set(result, result)
+    return result
   }
-
   return removeEmpty(original)
 }
 
+const copyOwnFields = (source, target) => {
+  for (const key of getDataKeys(source)) target[key] = getOwnValue(source, key)
+  return target
+}
+
 const copy = (source, isArr) => {
+  assertSafeContainer(source)
   const to = Array.isArray(source) || isArr ? [] : {}
   // An object converted to an array must not carry over named properties.
   if (isDataContainer(source) && (Array.isArray(source) || !isArr)) {
-    for (const key of Object.keys(source)) to[key] = source[key]
+    copyOwnFields(source, to)
   }
   return to
 }
 
 // Internal batch setter: callers check all inputs before applying any changes.
-export const applyValue = (source, keys, update, merge = true) => {
+export const applyValue = (
+  source,
+  keys,
+  update,
+  merge = true,
+  cleanedValues
+) => {
   if (typeof keys === 'string') keys = keys.split('.')
   keys = Array.prototype.map.call(keys, key =>
     digitRe.test(key) ? Number(key.slice(1, -1)) : key
@@ -131,8 +151,13 @@ export const applyValue = (source, keys, update, merge = true) => {
       if (isLast) {
         let nextValue = update
         if (isDataContainer(update) && !Array.isArray(update) && merge) {
+          // An existing leaf has not been recursively validated. Copy it through
+          // the same own-key guards as every other container before merging.
+          if (currentValue !== null && typeof currentValue === 'object') {
+            assertSafeContainer(currentValue)
+          }
           const previous = isDataContainer(currentValue)
-            ? currentValue
+            ? copy(currentValue)
             : undefined
           nextValue = Object.assign({}, previous, update)
         }
@@ -146,12 +171,12 @@ export const applyValue = (source, keys, update, merge = true) => {
     }
   }
 
-  return removeNullAndEmpty(next)
+  return removeNullAndEmpty(next, cleanedValues)
 }
 
 export default (source = {}, keys, update, merge = true) => {
   assertSafePath(keys)
-  assertJsonData(source)
+  assertSafeContainer(source)
   assertJsonData(update)
   return applyValue(source, keys, update, merge)
 }

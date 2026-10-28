@@ -9,7 +9,8 @@ Small enough for use in client-side code. In fact, it's very handy if you're loo
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
 
 Sinks 5.0.0 enforces a [JSON-compatible data contract](#json-compatible-data-500).
-Schema validation is optional; the data contract always applies.
+Validate loaded state explicitly; incoming edits are always checked, even when
+schema validation is disabled.
 
 ## What does it do?
 
@@ -225,8 +226,8 @@ values are strings, finite numbers, booleans, `null`, plain objects,
 null-prototype objects, and dense arrays containing supported values. Repeated
 references to the same object are allowed; circular references are rejected.
 
-The following values are rejected, including when nested inside arrays or
-opaque `obj` fields:
+Incoming edits and `definition.validate()` reject the following values,
+including when nested inside arrays or opaque `obj` fields:
 
 - Functions, `undefined`, symbols, and BigInt.
 - `NaN`, `Infinity`, and `-Infinity`.
@@ -237,15 +238,30 @@ opaque `obj` fields:
 - Enumerable getters/setters and custom `toJSON` methods. Data properties must
   contain values, rather than executable serialization behavior.
 
-These checks apply to source data, update values, diffs, merges, schemas, and
-validation, even when schema validation is disabled. Entire update batches are
-checked before edits are applied, including no-op batches and ignored diff
-fields. Invalid data throws an error; Sinks does not silently drop it or coerce
-it through a JSON round trip.
+Validate loaded state with `definition.validate(data)` before storing, diffing,
+or merging it. This checks the entire data structure and its schema. Subsequent
+operations assume existing state already satisfies the contract, so unchanged
+or ignored branches and no-op operations do not repeat that full check.
+
+Setters always check incoming values, and updates check the entire incoming
+batch before applying any edit. Passing `false` to a definition method skips
+the resulting state's schema check; it does not disable incoming-data checks
+or local path, own-property, prototype, and array protections. Schemas are also
+checked when built. Invalid input throws; Sinks does not coerce data through a
+JSON round trip.
+
+```js
+const definition = buildDefinition({ payload: 'obj', note: 'str' })
+definition.validate(loadedData) // full data-contract and schema check
+const next = definition.update(loadedData, { note: 'changed' }, false)
+// Incoming edits checked; resulting schema check skipped.
+```
 
 The existing cleanup rules still apply: `null` deletes a value, and empty
 objects and arrays are removed after updates. JSON compatibility does not
-change these deletion semantics.
+change these deletion semantics. Cleanup is immutable: it does not modify
+existing state or incoming update values, and unchanged branches retain their
+references.
 
 #### Missing objects and array paths
 
@@ -297,6 +313,8 @@ without requiring the newer `Object.hasOwn` API.
   `undefined`. Supply dense arrays and finite numbers.
 - Keep functions outside synchronized data. The built-in `func` type has been
   removed, and the `num` type now accepts only finite numbers.
+- Call `definition.validate(data)` when loading existing state. A no-op update
+  or diff is not a full data-contract check.
 
 Custom validator functions remain supported as configuration through the second
 argument to `buildDefinition`. They validate JSON-compatible values and cannot
@@ -432,7 +450,7 @@ npm install sinks
 
 ## Change log
 
-- `5.0.0`: Breaking release enforcing JSON-compatible data across setters, updates, diffs, merges, schemas, and validation. Rejects functions, nested `undefined`, symbols, BigInt, non-finite numbers, circular references, sparse arrays, array metadata, accessors, custom serialization methods, and objects with custom prototypes. Removes the `func` type and makes `num` finite-only; custom validator functions remain supported as configuration. Missing object arguments still default to empty objects, and null/empty cleanup is preserved. Normalizes empty new array entries so generated updates apply without creating holes; existing array edits remain granular. Reserves `__proto__`, processes only own properties, and preserves literal `constructor`/`prototype` data fields and null-prototype objects. All data checks remain enabled when schema validation is disabled. Removes the `dlv` runtime dependency.
+- `5.0.0`: Breaking release for JSON-compatible data. Incoming edits and explicit `definition.validate()` reject functions, nested `undefined`, symbols, BigInt, non-finite numbers, circular references, sparse arrays, array metadata, accessors, custom serialization methods, and custom prototypes. Existing state is expected to be validated when loaded; unchanged/ignored branches and no-op operations do not repeat the full data check. Removes `func` and makes `num` finite-only; custom validator functions remain supported as configuration. Missing object arguments still default to empty objects. Null/empty cleanup is immutable and shared with array-diff normalization. Empty new array entries are normalized so generated updates apply without holes; existing array edits remain granular. Reserves `__proto__`, uses own properties, and preserves literal `constructor`/`prototype` data fields and null-prototype objects. Incoming checks and local safety protections stay enabled when schema validation is disabled. Own-property checks work without `Object.hasOwn`. Removes the `dlv` runtime dependency.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.

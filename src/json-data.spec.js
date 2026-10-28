@@ -69,29 +69,18 @@ const invalidValues = [
 
 describe('JSON-compatible data', () => {
   for (const [name, makeValue] of invalidValues) {
-    it(`rejects ${name} across setters, diffs, merges, and validation`, () => {
+    it(`rejects ${name} in incoming edits and explicit validation`, () => {
       const value = makeValue()
       const data = { payload: value }
 
-      // Check both incoming values and existing data, including no-op inputs.
+      // Incoming edits are always checked, even with schema validation off.
       const operations = [
         () => setValue({}, 'payload', value),
-        () => setValue(data, 'note', 'changed'),
         () => definition.setValue({}, 'payload', value),
         () => definition.setValue({}, 'payload', value, false),
         () => updateObject({}, data),
-        () => updateObject(data, {}),
         () => definition.update({}, data),
         () => definition.update({}, data, false),
-        () => definition.update(data, null, false),
-        () => getChanges({}, data),
-        () => getChanges(data, {}),
-        () => getChanges(data, data, { ignoredKeys: ['payload'] }),
-        () => mergeObjects({}, data),
-        () => mergeObjects(data, {}),
-        () => mergeObjects(data, data),
-        () => definition.merge({}, data),
-        () => definition.merge(data, {}, false),
         () => definition.validate(data),
         () => buildDefinition({ note: value }),
       ]
@@ -151,7 +140,7 @@ describe('JSON-compatible data', () => {
     })
   })
 
-  it('checks the full batch before cleanup can mutate existing data', () => {
+  it('checks the full incoming batch before applying any edit', () => {
     const before = { payload: { empty: [] } }
     throws(
       () =>
@@ -159,6 +148,54 @@ describe('JSON-compatible data', () => {
       /JSON-compatible/
     )
     deepStrictEqual(before, { payload: { empty: [] } })
+  })
+
+  it('uses explicit validation to check loaded state, including untouched branches', () => {
+    const before = { payload: { legacy: () => {} } }
+    throws(() => definition.validate(before), /JSON-compatible/)
+    // No-op operations are not a substitute for validating loaded state.
+    strictEqual(updateObject(before, {}), before)
+    strictEqual(definition.update(before, null, false), before)
+    strictEqual(mergeObjects(before, before).updated, before)
+    strictEqual(getChanges(before, before), null)
+    strictEqual(getChanges({}, before, { ignoredKeys: ['payload'] }), null)
+  })
+
+  it('cleans frozen source and incoming data without changing either input', () => {
+    const shared = Object.freeze({ note: 'keep', empty: Object.freeze([]) })
+    const before = Object.freeze({
+      payload: Object.freeze({ first: shared, second: shared }),
+    })
+    const items = Object.freeze([null, Object.freeze({}), shared])
+    const edits = Object.freeze({ 'payload.items': items, note: 'changed' })
+    const result = updateObject(before, edits)
+    deepStrictEqual(result, {
+      payload: {
+        first: { note: 'keep' },
+        second: { note: 'keep' },
+        items: [{ note: 'keep' }],
+      },
+      note: 'changed',
+    })
+    strictEqual(result.payload.first, result.payload.second)
+    strictEqual(result.payload.first, result.payload.items[0])
+    strictEqual(before.payload.first, shared)
+    deepStrictEqual(shared.empty, [])
+    strictEqual(items.length, 3)
+    strictEqual(items[0], null)
+  })
+
+  it('preserves unchanged branches while cleaning multiple updates', () => {
+    const keep = Object.freeze({ note: 'same' })
+    const before = Object.freeze({ payload: Object.freeze({ keep }) })
+    const result = updateObject(before, {
+      'payload.first': { empty: [], note: 'one' },
+      'payload.second': { empty: {}, note: 'two' },
+    })
+    strictEqual(result.payload.keep, keep)
+    deepStrictEqual(result.payload.first, { note: 'one' })
+    deepStrictEqual(result.payload.second, { note: 'two' })
+    deepStrictEqual(before, { payload: { keep } })
   })
 
   it('rejects accessors without invoking their code', () => {

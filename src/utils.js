@@ -1,4 +1,4 @@
-const reservedSegments = new Set(['__proto__'])
+const reservedPathRe = /(^|\.)__proto__(\.|$)/
 const hasOwnProperty = Object.prototype.hasOwnProperty
 
 // Keep own-property checks safe for shadowed names and runtimes that predate
@@ -12,25 +12,52 @@ export const isDataContainer = value => {
   return prototype === null || prototype === Object.prototype
 }
 
+// Check a container before copying, traversing, or splicing it. This is shallow:
+// proving that every value in an existing state is JSON belongs to validate().
+export const assertSafeContainer = value => {
+  if (typeof value === 'function') {
+    throw Error('INVALID JSON data: function is not JSON-compatible')
+  }
+  if (value === null || typeof value !== 'object') return
+  if (!isDataContainer(value)) throw Error('INVALID object prototype')
+  if (Array.isArray(value)) {
+    const keys = Object.keys(value)
+    if (
+      keys.length !== value.length ||
+      keys.some(
+        key => !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length
+      )
+    ) {
+      throw Error('INVALID array: expected dense indexed data')
+    }
+  }
+}
+
+export const getDataKeys = value => {
+  assertSafeContainer(value)
+  const keys = Object.keys(value || {})
+  for (const key of keys) assertSafePath(key)
+  return keys
+}
+
 export const assertSafePath = path => {
-  if (typeof path !== 'string' && !Array.isArray(path)) {
+  if (typeof path === 'string') {
+    if (reservedPathRe.test(path)) throw Error('INVALID reserved path segment')
+    return
+  }
+  if (!Array.isArray(path)) {
     throw Error('INVALID path')
   }
-  if (Array.isArray(path)) assertJsonData(path)
-  const keys = typeof path === 'string' ? path.split('.') : path
-  for (let index = 0; index < keys.length; index++) {
-    const key = keys[index]
+  assertJsonData(path)
+  for (let index = 0; index < path.length; index++) {
+    const key = path[index]
     if (typeof key !== 'string' && typeof key !== 'number') {
       throw Error('INVALID path segment')
     }
     if (typeof key === 'number' && !Number.isFinite(key)) {
       throw Error('INVALID path segment')
     }
-    if (
-      String(key)
-        .split('.')
-        .some(segment => reservedSegments.has(segment))
-    ) {
+    if (reservedPathRe.test(key)) {
       throw Error('INVALID reserved path segment')
     }
   }
@@ -51,9 +78,6 @@ export const assertJsonData = value => {
         `INVALID ${path || 'JSON data'}: ${kind} is not JSON-compatible`
       )
     }
-    if (!isDataContainer(value)) {
-      throw Error('INVALID object prototype')
-    }
     if (ancestors.has(value)) {
       throw Error('INVALID circular reference')
     }
@@ -61,11 +85,7 @@ export const assertJsonData = value => {
     if (checked.has(value)) return
     ancestors.add(value)
 
-    const keys = Object.keys(value)
-    const isArray = Array.isArray(value)
-    if (isArray && keys.length !== value.length) {
-      throw Error('INVALID array: expected dense indexed data')
-    }
+    const keys = getDataKeys(value)
     for (const symbol of Object.getOwnPropertySymbols(value)) {
       if (Object.prototype.propertyIsEnumerable.call(value, symbol)) {
         throw Error('INVALID JSON data: symbol key')
@@ -80,13 +100,6 @@ export const assertJsonData = value => {
       throw Error('INVALID JSON data: custom serialization')
     }
     for (const key of keys) {
-      assertSafePath(key)
-      if (
-        isArray &&
-        (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length)
-      ) {
-        throw Error('INVALID array: expected dense indexed data')
-      }
       const property = Object.getOwnPropertyDescriptor(value, key)
       // Reject executable properties instead of invoking getters during checks.
       if (!hasOwn(property, 'value')) {
@@ -102,7 +115,13 @@ export const assertJsonData = value => {
 }
 
 export const getOwnValue = (object, key) => {
-  if (object != null && hasOwn(object, key)) return object[key]
+  if (object == null) return
+  const property = Object.getOwnPropertyDescriptor(object, key)
+  if (!property) return
+  if (!hasOwn(property, 'value')) {
+    throw Error('INVALID JSON data: accessor property')
+  }
+  return property.value
 }
 
 export const isEmpty = unknown => {

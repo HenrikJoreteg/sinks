@@ -59,9 +59,9 @@ for (const [name, update] of [
       }
     })
 
-    it('rejects unsafe source data even when the update is a no-op', () => {
+    it('rejects reserved source keys when copying existing data', () => {
       for (const json of unsafeObjects) {
-        throws(() => update(JSON.parse(json), {}), /INVALID/)
+        throws(() => update(JSON.parse(json), { note: 'changed' }), /INVALID/)
       }
     })
 
@@ -178,12 +178,10 @@ for (const [name, merge] of [
     (one, two) => definition.merge(one, two, false),
   ],
 ]) {
-  it(`${name} rejects unsafe data on either side, including identical inputs`, () => {
+  it(`${name} guards keys used to generate and apply changes`, () => {
     for (const json of unsafeObjects) {
       const unsafe = JSON.parse(json)
       throws(() => merge({}, unsafe), /INVALID/)
-      throws(() => merge(unsafe, {}), /INVALID/)
-      throws(() => merge(unsafe, unsafe), /INVALID/)
     }
     const inherited = Object.create({ injected: 'forged' })
     throws(() => merge({}, inherited), /INVALID object prototype/)
@@ -213,11 +211,10 @@ for (const [name, merge] of [
   })
 }
 
-it('getChanges rejects unsafe inputs before generating reusable update paths', () => {
+it('getChanges rejects reserved keys before generating reusable update paths', () => {
   for (const json of unsafeObjects) {
     const unsafe = JSON.parse(json)
     throws(() => getChanges({}, unsafe), /INVALID/)
-    throws(() => getChanges(unsafe, {}), /INVALID/)
   }
 })
 
@@ -246,8 +243,9 @@ it('rejects function branches without visiting or mutating their prototypes', ()
     )
     equal(Object.hasOwn(constructor.prototype, 'injected'), false)
   }
-  throws(() => getChanges(before, {}), /JSON-compatible/)
-  throws(() => setValue(before, 'constructor', {}), /JSON-compatible/)
+  // Replacing or removing a legacy function does not follow its properties.
+  deepStrictEqual(getChanges(before, {}), { constructor: null })
+  deepStrictEqual(setValue(before, 'constructor', {}), {})
   deepStrictEqual(supplied.extra, { name: 'function metadata' })
   equal(before.constructor, supplied)
 })
@@ -366,16 +364,42 @@ it('rejects sparse arrays before cleanup can copy or mutate inherited entries', 
     configurable: true,
   })
   try {
-    const items = []
-    items[99] = null
-    items[101] = { name: 'own' }
+    const items = Array.from({ length: 102 }, () => ({ name: 'own' }))
+    delete items[100]
     // Reject before splice could materialize index 100 as an own entry.
     throws(() => setValue({}, 'items', items), /INVALID array/)
+    // Existing arrays are also checked before the setter's explicit splice.
+    throws(() => setValue({ items }, 'items.[99]', null), /INVALID array/)
     equal(Object.hasOwn(items, 100), false)
-    equal(items[99], null)
+    deepStrictEqual(items[99], { name: 'own' })
     deepStrictEqual(inherited, { name: 'inherited', untouched: null })
     deepStrictEqual(items[101], { name: 'own' })
   } finally {
     delete Array.prototype[100]
   }
+})
+
+it('checks existing merge leaves before copying their keys', () => {
+  const payload = JSON.parse('{"__proto__":{"injected":"forged"}}')
+  throws(
+    () => definition.update({ payload }, { payload: { name: 'new' } }, false),
+    /INVALID/
+  )
+  equal(Object.hasOwn(Object.prototype, 'injected'), false)
+  deepStrictEqual(Object.getPrototypeOf(payload), Object.prototype)
+})
+
+it('rejects source accessors without executing them', () => {
+  let calls = 0
+  const before = Object.defineProperty({}, 'payload', {
+    enumerable: true,
+    get: () => {
+      calls++
+      return { note: 'forged' }
+    },
+  })
+  throws(() => setValue(before, 'note', 'new'), /accessor/)
+  throws(() => getChanges(before, { payload: {} }), /accessor/)
+  throws(() => definition.update(before, null), /accessor/)
+  equal(calls, 0)
 })
