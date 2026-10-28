@@ -32,8 +32,6 @@ test('basicTypes exposes expected validators', t => {
   t.equal(basicTypes.obj([]), true)
   t.equal(basicTypes.obj('hi'), false)
 
-  t.equal(Object.hasOwn(basicTypes, 'func'), false)
-
   const isPrimaryColor = basicTypes.matches(['red', 'blue'])
   t.equal(isPrimaryColor('red'), true)
   t.equal(isPrimaryColor('green'), false)

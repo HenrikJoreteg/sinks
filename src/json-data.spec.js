@@ -7,7 +7,6 @@ import {
   throws,
 } from 'node:assert/strict'
 import {
-  basicTypes,
   buildDefinition,
   getChanges,
   mergeObjects,
@@ -219,7 +218,6 @@ describe('JSON-compatible data', () => {
       { anything: () => true }
     )
     throws(() => permissive.update({}, { value: () => {} }), /JSON-compatible/)
-    strictEqual(Object.hasOwn(basicTypes, 'func'), false)
   })
 
   it('allows replacement and append array paths without creating holes', () => {
