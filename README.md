@@ -24,7 +24,7 @@ It was designed to be part of a system where data stored as simple objects needs
 
 ## Main exports
 
-Sinks 4.0.0 is published as plain ESM source. Use ESM imports:
+Sinks is published as plain ESM source. Use ESM imports:
 
 ```js
 import { buildDefinition, getChanges, updateObject } from 'sinks'
@@ -199,6 +199,23 @@ console.log(
 // }
 ```
 
+### Safe object keys and prototypes (5.0.0)
+
+Sinks reserves `__proto__`, `constructor`, and `prototype`. These names are
+rejected as complete path segments or nested object keys, including wildcard
+IDs and values inside arrays. The checks apply to source data, update values,
+diffs, merges, schemas, and validation, even when schema validation is disabled.
+Substrings such as `constructorName` remain valid keys.
+
+Objects must have the ordinary object prototype or a null prototype; arrays
+must have the ordinary array prototype. Objects with custom prototypes are
+rejected. Sinks only processes own enumerable properties and does not copy or
+traverse inherited properties. Existing function values remain supported by the
+`func` type; their own enumerable properties are also checked.
+
+This is a deliberate security restriction: existing data with a reserved key
+must be renamed before it can be processed by these operations.
+
 ### `setValue(obj1, keyPath, updatedValue)`
 
 This is the single-key update version of `updateObject` in fact, this what `updateObject` calls for each key you provide in the update object.
@@ -329,6 +346,7 @@ npm install sinks
 
 ## Change log
 
+- `5.0.0`: Breaking security release. Reserves `__proto__`, `constructor`, and `prototype` in paths and nested data, rejects objects with custom prototypes, and processes only own properties. Safety checks remain enabled when schema validation is disabled. Supports null-prototype objects and ordinary keys that shadow Object.prototype methods during diffing and merging.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.

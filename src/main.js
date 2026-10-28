@@ -1,8 +1,18 @@
 //@ts-check
-import deepSet from './deep-set.js'
+import deepSet, { applyValue } from './deep-set.js'
 import { basicTypes } from './basic-types.js'
-import { injectBrackets, isEmpty, stripBrackets } from './utils.js'
-import dlv from 'dlv'
+import {
+  assertSafeObject,
+  getOwnValue,
+  injectBrackets,
+  isEmpty,
+  stripBrackets,
+} from './utils.js'
+
+const getPathValue = (object, path) => {
+  for (const key of path.split('.')) object = getOwnValue(object, key)
+  return object
+}
 
 const toRegexp = str =>
   new RegExp(
@@ -20,15 +30,15 @@ const buildMatcherFunction = definition => {
    * We first categorize them by length then by what the key starts with to be
    * able to limit the number of items it has to test for each key.
    */
-  const processedByLength = {}
-  for (const key in definition) {
+  const processedByLength = Object.create(null)
+  for (const key of Object.keys(definition)) {
     const value = definition[key]
     if (key.includes('{}') || key.includes('[]')) {
       const split = key.split('.')
       const keysBeforeVariable = []
       const length = split.length
       if (!processedByLength[length]) {
-        processedByLength[length] = {}
+        processedByLength[length] = Object.create(null)
       }
       const processed = processedByLength[length]
       for (const part of split) {
@@ -50,12 +60,12 @@ const buildMatcherFunction = definition => {
   }
 
   return path => {
-    if (definition[path]) {
+    if (Object.hasOwn(definition, path)) {
       return definition[path]
     }
     const length = path.split('.').length
     const processed = processedByLength[length]
-    for (const key in processed) {
+    for (const key of Object.keys(processed || {})) {
       if (path.startsWith(key)) {
         const limitedItemsToTest = processed[key]
         for (const { test, value } of limitedItemsToTest) {
@@ -75,9 +85,6 @@ const isNullTombstone = value => {
   if (typeof value !== 'object') {
     return false
   }
-  if (Array.isArray(value)) {
-    return value.every(isNullTombstone)
-  }
   return Object.keys(value).every(key => isNullTombstone(value[key]))
 }
 
@@ -90,19 +97,19 @@ const isNullTombstone = value => {
  * }} [options]
  * @returns {any} Changes object or null
  */
-export const getChanges = (
+const getObjectChanges = (
   original,
   modified,
   { includeDeletions = true, ignoredKeys } = {}
 ) => {
   const combined = { ...original, ...modified }
   const changes = {}
-  for (const key in combined) {
+  for (const key of Object.keys(combined)) {
     if (ignoredKeys && ignoredKeys.includes(key)) {
       continue
     }
-    const inOriginal = original && original.hasOwnProperty(key)
-    const inModified = modified && modified.hasOwnProperty(key)
+    const inOriginal = original && Object.hasOwn(original, key)
+    const inModified = modified && Object.hasOwn(modified, key)
     // removed in new
     if (inOriginal && !inModified) {
       if (includeDeletions && !isNullTombstone(original[key])) {
@@ -123,14 +130,14 @@ export const getChanges = (
       if (modifiedValueIsObject && modifiedValue !== null) {
         // we pass through "ignored" for nested stuff, but not the ignored keys
         // those only apply at the top level
-        const otherChanges = getChanges(
+        const otherChanges = getObjectChanges(
           inOriginal ? original[key] : {},
           modifiedValue,
           {
             includeDeletions,
           }
         )
-        for (const otherKey in otherChanges) {
+        for (const otherKey of Object.keys(otherChanges || {})) {
           const value = otherChanges[otherKey]
           const isArray = Array.isArray(modified[key])
           changes[
@@ -145,12 +152,24 @@ export const getChanges = (
   return Object.keys(changes).length ? changes : null
 }
 
+/**
+ * @param {any} original The original object
+ * @param {any} modified The modified one
+ * @param {{ includeDeletions?: boolean; ignoredKeys?: string[] }} [options]
+ * @returns {any} Changes object or null
+ */
+export const getChanges = (original, modified, options = {}) => {
+  assertSafeObject(original)
+  assertSafeObject(modified)
+  return getObjectChanges(original, modified, options)
+}
+
 export const setValue = deepSet
 
 const getUpdateKeys = updateObj => {
   const keys = []
   const arrayDeletions = []
-  for (const key in updateObj) {
+  for (const key of Object.keys(updateObj || {})) {
     if (isNullTombstone(updateObj[key]) && /\[\d+\]/.test(key)) {
       arrayDeletions.push(key)
     } else {
@@ -165,13 +184,19 @@ const getUpdateKeys = updateObj => {
   return [...keys, ...arrayDeletions]
 }
 
-export const updateObject = (obj, updateObj) => {
+const applyUpdates = (obj, updateObj, merge) => {
+  // Check the entire batch once, before path expansion or empty-value cleanup.
+  assertSafeObject(obj)
+  assertSafeObject(updateObj)
   let updated = obj
   for (const key of getUpdateKeys(updateObj)) {
-    updated = setValue(updated, key, updateObj[key], false)
+    updated = applyValue(updated, key, updateObj[key], merge)
   }
   return updated
 }
+
+export const updateObject = (obj, updateObj) =>
+  applyUpdates(obj, updateObj, false)
 
 export const mergeObjects = (obj1, obj2) => {
   const addedByObj2 = getChanges(obj1, obj2, { includeDeletions: false })
@@ -191,16 +216,19 @@ export const mergeObjects = (obj1, obj2) => {
   // look for keys that are the same
   const conflicts = {}
   const notConflicted = {}
-  for (const key in addedByObj2) {
-    if (addedByObj1.hasOwnProperty(key)) {
+  for (const key of Object.keys(addedByObj2)) {
+    if (Object.hasOwn(addedByObj1, key)) {
       const cleanedKey = stripBrackets(key)
-      conflicts[key] = [dlv(obj1, cleanedKey), dlv(obj2, cleanedKey)]
+      conflicts[key] = [
+        getPathValue(obj1, cleanedKey),
+        getPathValue(obj2, cleanedKey),
+      ]
     } else {
       notConflicted[key] = addedByObj2[key]
     }
   }
-  for (const key in addedByObj1) {
-    if (!addedByObj2.hasOwnProperty(key)) {
+  for (const key of Object.keys(addedByObj1)) {
+    if (!Object.hasOwn(addedByObj2, key)) {
       notConflicted[key] = addedByObj1[key]
     }
   }
@@ -212,10 +240,11 @@ export const mergeObjects = (obj1, obj2) => {
 }
 
 export const buildDefinition = (definition, fnsObject = basicTypes) => {
+  assertSafeObject(definition)
   const matcher = buildMatcherFunction(definition)
 
-  const validateObject = (obj, path = '') => {
-    for (const key in obj) {
+  const validateValues = (obj, path = '') => {
+    for (const key of Object.keys(obj || {})) {
       const value = obj[key]
       if (value === null) {
         continue
@@ -227,7 +256,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
         if (isEmpty(value) && !type) {
           throw Error('INVALID path: ' + extendedPath)
         }
-        validateObject(value, extendedPath)
+        validateValues(value, extendedPath)
       } else {
         if (!type) {
           throw Error('INVALID path: ' + extendedPath)
@@ -237,7 +266,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           let found = false
           let passed = false
           for (const typeEntry of type) {
-            if (fnsObject[typeEntry]) {
+            if (Object.hasOwn(fnsObject, typeEntry)) {
               found = true
               if (fnsObject[typeEntry](value)) {
                 passed = true
@@ -250,7 +279,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
           }
           return
         } else {
-          testFn = fnsObject[type]
+          testFn = getOwnValue(fnsObject, type)
         }
         if (!testFn) {
           throw Error('INVALID type: ' + type)
@@ -262,6 +291,11 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
     }
   }
 
+  const validateObject = (obj, path = '') => {
+    assertSafeObject(obj)
+    validateValues(obj, path)
+  }
+
   const setValue = (obj, path, value, validate = true) => {
     const updated = deepSet(obj, path, value)
     if (validate) {
@@ -271,10 +305,7 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
   }
 
   const update = (obj, updateObj, validate = true) => {
-    let updated = obj
-    for (const key of getUpdateKeys(updateObj)) {
-      updated = setValue(updated, key, updateObj[key], false)
-    }
+    const updated = applyUpdates(obj, updateObj, true)
     if (validate) {
       validateObject(updated)
     }

@@ -1,3 +1,48 @@
+const reservedSegments = new Set(['__proto__', 'constructor', 'prototype'])
+
+export const assertSafePath = path => {
+  const keys = Array.isArray(path) ? path : path.split('.')
+  for (const key of keys) {
+    if (typeof key !== 'string' && typeof key !== 'number') {
+      throw Error('INVALID path segment')
+    }
+    if (
+      String(key)
+        .split('.')
+        .some(segment => reservedSegments.has(segment))
+    ) {
+      throw Error('INVALID reserved path segment')
+    }
+  }
+}
+
+export const assertSafeObject = value => {
+  if (
+    value === null ||
+    (typeof value !== 'object' && typeof value !== 'function')
+  )
+    return
+  if (typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value)
+    const expectedPrototype = Array.isArray(value)
+      ? Array.prototype
+      : Object.prototype
+    const isNullPrototypeObject = prototype === null && !Array.isArray(value)
+    if (prototype !== expectedPrototype && !isNullPrototypeObject) {
+      throw Error('INVALID object prototype')
+    }
+  }
+  // Inspect nested values too: an entire object or array can be one update.
+  for (const key of Object.keys(value)) {
+    assertSafePath(key)
+    assertSafeObject(value[key])
+  }
+}
+
+export const getOwnValue = (object, key) => {
+  if (object != null && Object.hasOwn(object, key)) return object[key]
+}
+
 export const isEmpty = unknown => {
   if (typeof unknown === 'object') {
     // handle null which is "object"

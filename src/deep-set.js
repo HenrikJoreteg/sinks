@@ -24,7 +24,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import { isEmpty } from './utils.js'
+import {
+  assertSafeObject,
+  assertSafePath,
+  getOwnValue,
+  isEmpty,
+} from './utils.js'
 const digitRe = /^\[\d+\]/
 
 export const removeNullAndEmpty = original => {
@@ -38,6 +43,8 @@ export const removeNullAndEmpty = original => {
 
     if (isArray) {
       for (let i = 0, l = obj.length; i < l; i++) {
+        // Sparse holes must not expose inherited array entries to cleanup.
+        if (!Object.hasOwn(obj, i)) continue
         const value = obj[i]
         if (value === null || isEmpty(value)) {
           obj.splice(i, 1)
@@ -47,7 +54,7 @@ export const removeNullAndEmpty = original => {
         }
       }
     } else {
-      for (const key in obj) {
+      for (const key of Object.keys(obj || {})) {
         const value = obj[key]
         if (value === null || isEmpty(value)) {
           delete obj[key]
@@ -65,12 +72,13 @@ export const removeNullAndEmpty = original => {
 }
 
 const copy = (source, isArr) => {
-  let to = (source && !!source.pop) || isArr ? [] : {}
-  for (let i in source) to[i] = source[i]
+  const to = Array.isArray(source) || isArr ? [] : {}
+  for (const key of Object.keys(source || {})) to[key] = source[key]
   return to
 }
 
-export default (source, keys, update, merge = true) => {
+// Internal batch setter: callers check all inputs before applying any changes.
+export const applyValue = (source, keys, update, merge = true) => {
   keys.split && (keys = keys.split('.'))
   keys = keys.map(key => (digitRe.test(key) ? Number(key.slice(1, -1)) : key))
 
@@ -84,6 +92,7 @@ export default (source, keys, update, merge = true) => {
   for (; i < l; i++) {
     const isLast = i === l - 1
     const currentKey = keys[i]
+    const currentValue = getOwnValue(last, currentKey)
     if (shouldDelete && isLast) {
       if (Array.isArray(last)) {
         last.splice(currentKey, 1)
@@ -94,11 +103,11 @@ export default (source, keys, update, merge = true) => {
       if (isLast) {
         last[currentKey] =
           typeof update === 'object' && !Array.isArray(update) && merge
-            ? Object.assign({}, last[currentKey], update)
+            ? Object.assign({}, currentValue, update)
             : update
       } else {
         last = last[currentKey] = copy(
-          last[currentKey],
+          currentValue,
           typeof keys[i + 1] === 'number'
         )
       }
@@ -106,4 +115,11 @@ export default (source, keys, update, merge = true) => {
   }
 
   return removeNullAndEmpty(next)
+}
+
+export default (source, keys, update, merge = true) => {
+  assertSafePath(keys)
+  assertSafeObject(source)
+  assertSafeObject(update)
+  return applyValue(source, keys, update, merge)
 }
