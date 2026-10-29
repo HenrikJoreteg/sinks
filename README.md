@@ -337,6 +337,11 @@ fixture sizes. To compare against another checkout, pass its entry file:
 npm run benchmark -- --baseline ../sinks-main/src/index.js
 ```
 
+The `sinks-built` workloads measure subsequent updates, recursive traversal,
+serialization, and validation of documents constructed through each version's
+update API. Fixture construction happens outside the timed operations. Use
+`--filter sinks-built` to focus on the cost of consuming returned objects.
+
 To compare a published version, install it under an alias without changing the
 package manifest or lockfile:
 
@@ -369,6 +374,7 @@ npm install sinks
 
 ## Change log
 
+- `4.0.4`: Restore fast property storage for copied plain objects while preserving safe own-property writes and the existing array-copy path. Add benchmarks for consuming documents built through sinks.
 - `4.0.3`: Security fix: define update keys as own data properties and follow only own fields when traversing update paths. Prevents prototype injection while preserving literal `__proto__`, `constructor`, and `prototype` data keys. Functions remain opaque values when traversing paths. Schema and validator lookup use own entries. Replaces `dlv` with an own-property conflict reader.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes

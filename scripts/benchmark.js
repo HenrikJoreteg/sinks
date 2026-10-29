@@ -54,6 +54,13 @@ const loadApi = async specifier => {
   return api
 }
 
+const countLeaves = value => {
+  if (value === null || typeof value !== 'object') return 1
+  let count = 0
+  for (const key of Object.keys(value)) count += countLeaves(value[key])
+  return count
+}
+
 const makeWorkloads = (api, size) => {
   const records = Object.fromEntries(
     Array.from({ length: size }, (_, index) => [
@@ -99,6 +106,19 @@ const makeWorkloads = (api, size) => {
   }))
   const tiny = { note: 'before', group: { note: 'old' } }
   const tinyEqual = structuredClone(tiny)
+  // Build small branches through the API, then copy their containing dictionary
+  // once. This exercises the returned containers without quadratic fixture setup.
+  const builtRecords = Object.fromEntries(
+    Object.keys(records).map(key => [
+      key,
+      api.updateObject({}, api.getChanges({}, records[key])),
+    ])
+  )
+  const builtState = api.updateObject(
+    { note: state.note, records: builtRecords },
+    { ['records.id' + middle + '.note']: 'value' }
+  )
+  deepStrictEqual(builtState, state, 'sinks-built fixture: incorrect result')
   const workloads = [
     [
       'tiny scalar update',
@@ -209,6 +229,36 @@ const makeWorkloads = (api, size) => {
         return updated
       },
       { ...state, note: 'text99' },
+    ],
+    [
+      'scalar update on sinks-built document',
+      () => api.updateObject(builtState, { note: 'after' }),
+      { ...state, note: 'after' },
+    ],
+    [
+      'replay 100 updates on sinks-built document',
+      () => {
+        let updated = builtState
+        for (const update of updates)
+          updated = definition.update(updated, update, false)
+        return updated
+      },
+      { ...state, note: 'text99' },
+    ],
+    [
+      'walk sinks-built document',
+      () => countLeaves(builtState),
+      countLeaves(state),
+    ],
+    [
+      'stringify sinks-built document',
+      () => JSON.stringify(builtState),
+      JSON.stringify(state),
+    ],
+    [
+      'validate sinks-built document',
+      () => definition.validate(builtState),
+      undefined,
     ],
   ]
   return workloads.map(([name, run, expected]) => ({ name, run, expected }))
