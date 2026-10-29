@@ -24,13 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import {
-  getOwnValue,
-  hasOwn,
-  isEmpty,
-  removeArrayIndex,
-  setOwnValue,
-} from './utils.js'
+import { getOwnValue, hasOwn, isEmpty, setOwnValue } from './utils.js'
 const digitRe = /^\[\d+\]/
 
 export const removeNullAndEmpty = original => {
@@ -47,7 +41,7 @@ export const removeNullAndEmpty = original => {
         if (!hasOwn(obj, i)) continue
         const value = obj[i]
         if (value === null || isEmpty(value)) {
-          removeArrayIndex(obj, i)
+          Array.prototype.splice.call(obj, i, 1)
           removeEmpty(original)
         } else {
           removeEmpty(value)
@@ -102,7 +96,7 @@ export default (source, keys, update, merge = true) => {
     const currentValue = getOwnValue(last, currentKey)
     if (shouldDelete && isLast) {
       if (Array.isArray(last)) {
-        removeArrayIndex(last, currentKey)
+        Array.prototype.splice.call(last, currentKey, 1)
       } else {
         delete last[currentKey]
       }

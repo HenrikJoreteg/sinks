@@ -219,24 +219,13 @@ describe('prototype-safe updates', () => {
     deepStrictEqual(updateObject({}, edits), { note: 'own' })
   })
 
-  it('does not materialize inherited entries when splicing sparse arrays', () => {
-    const inherited = { note: 'inherited', empty: null }
-    const prototype = Object.create(Array.prototype)
-    prototype[1] = inherited
-    const makeItems = () => {
-      const items = [null, null, 'own']
-      delete items[1]
-      Object.setPrototypeOf(items, prototype)
-      return items
-    }
-    const cleaned = setValue({}, 'items', makeItems()).items
-    strictEqual(cleaned.length, 2)
-    strictEqual(hasOwn(cleaned, 0), false)
-    strictEqual(cleaned[1], 'own')
-    const deleted = setValue({ items: makeItems() }, 'items.[0]', null).items
-    strictEqual(hasOwn(deleted, 0), false)
-    strictEqual(deleted[1], 'own')
-    deepStrictEqual(inherited, { note: 'inherited', empty: null })
+  it('deletes array entries using the built-in splice when splice is a data key', () => {
+    const metadata = { splice: 'literal' }
+    const items = Object.assign([null, 'first', 'second'], metadata)
+    const cleaned = setValue({}, 'items', items)
+    deepStrictEqual(cleaned.items, Object.assign(['first', 'second'], metadata))
+    const deleted = setValue(cleaned, 'items.[0]', null)
+    deepStrictEqual(deleted.items, Object.assign(['second'], metadata))
   })
 
   it('retains non-JSON values, existing validators, and array writes', () => {

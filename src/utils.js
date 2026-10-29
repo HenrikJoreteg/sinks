@@ -23,21 +23,6 @@ export const setOwnValue = (object, key, value) => {
   })
 }
 
-// Native splice reads inherited entries at sparse holes. Shift only own entries
-// so deleting an item cannot pull prototype-owned objects into cleanup.
-export const removeArrayIndex = (array, index) => {
-  const length = array.length
-  let start = Math.trunc(Number(index)) || 0
-  start = start < 0 ? Math.max(length + start, 0) : Math.min(start, length)
-  if (start >= length) return
-  for (let i = start; i < length - 1; i++) {
-    if (hasOwn(array, i + 1)) setOwnValue(array, i, array[i + 1])
-    else delete array[i]
-  }
-  delete array[length - 1]
-  array.length = length - 1
-}
-
 export const isEmpty = unknown => {
   if (typeof unknown === 'object') {
     // handle null which is "object"
