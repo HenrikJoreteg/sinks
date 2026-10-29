@@ -56,7 +56,6 @@ export const removeNullAndEmpty = original => {
       }
     } else {
       for (const key of Object.keys(obj || {})) {
-        assertAllowedKey(key)
         const value = obj[key]
         if (value === null || isEmpty(value)) {
           delete obj[key]
@@ -82,7 +81,6 @@ const copy = (source, isArr) => {
   // Functions stay opaque values: never copy their prototype into a data branch.
   if (source !== null && typeof source === 'object') {
     for (const key of Object.keys(source)) {
-      assertAllowedKey(key)
       if (isArray) to[key] = source[key]
       else setOwnValue(to, key, source[key])
     }

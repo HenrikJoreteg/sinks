@@ -2,8 +2,6 @@
 import deepSet from './deep-set.js'
 import { basicTypes } from './basic-types.js'
 import {
-  assertAllowedKey,
-  assertAllowedKeys,
   getOwnValue,
   hasOwn,
   injectBrackets,
@@ -38,7 +36,6 @@ const buildMatcherFunction = definition => {
    */
   const processedByLength = Object.create(null)
   for (const key of Object.keys(definition)) {
-    for (const part of key.split('.')) assertAllowedKey(part)
     const value = definition[key]
     if (key.includes('{}') || key.includes('[]')) {
       const split = key.split('.')
@@ -112,7 +109,6 @@ export const getChanges = (
   const combined = { ...original, ...modified }
   const changes = {}
   for (const key of Object.keys(combined)) {
-    assertAllowedKey(key)
     if (ignoredKeys && ignoredKeys.includes(key)) {
       continue
     }
@@ -237,16 +233,12 @@ export const buildDefinition = (definition, fnsObject = basicTypes) => {
 
   const validateObject = (obj, path = '') => {
     for (const key of Object.keys(obj || {})) {
-      assertAllowedKey(key)
       const value = obj[key]
       if (value === null) {
         continue
       }
       const extendedPath = path ? path + '.' + key : key
       const type = matcher(extendedPath)
-
-      // An `obj` field skips schema traversal, but still obeys the key policy.
-      if (type === 'obj') assertAllowedKeys(value)
 
       if (typeof value === 'object' && type !== 'obj') {
         if (isEmpty(value) && !type) {

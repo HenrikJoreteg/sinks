@@ -88,60 +88,55 @@ describe('reserved prototype keys', () => {
       }
     })
 
-    it(`rejects ${key} in source containers being copied`, () => {
+    it(`copies existing ${key} data safely without checking it again`, () => {
       for (const source of [
-        { [key]: 'data' },
-        Object.defineProperty([], key, { value: 'data', enumerable: true }),
+        { [key]: 'existing' },
+        Object.defineProperty([], key, { value: 'existing', enumerable: true }),
       ]) {
-        throws(() => setValue(source, 'note', 'new'), {
-          message: 'Forbidden key: ' + key,
-        })
+        const updated = setValue(source, 'note', 'new')
+        strictEqual(hasOwn(updated, key), true)
+        strictEqual(updated[key], 'existing')
+        strictEqual(
+          Object.getPrototypeOf(updated),
+          Object.getPrototypeOf(source)
+        )
       }
-      throws(() => setValue({ payload: { [key]: 'data' } }, 'note', 'new'), {
-        message: 'Forbidden key: ' + key,
+      const source = { payload: { [key]: 'existing' } }
+      deepStrictEqual(setValue(source, 'note', 'new'), {
+        ...source,
+        note: 'new',
       })
     })
 
-    it(`rejects ${key} in explicit and wildcard schema paths`, () => {
-      for (const path of [
-        key,
-        `payload.${key}.note`,
-        `payload.{}.${key}`,
-        `payload.[].${key}`,
-      ]) {
-        throws(() => buildDefinition({ [path]: 'str' }), {
+    it(`reads existing ${key} data but rejects applying changes to it`, () => {
+      const fields = buildDefinition({ [`payload.${key}.note`]: 'str' })
+      const before = { payload: { [key]: { note: 'old' } } }
+      const after = { payload: { [key]: { note: 'new' } } }
+      doesNotThrow(() => fields.validate(after))
+      doesNotThrow(() => definition.validate(after))
+      const changes = getChanges(before, after)
+      deepStrictEqual(changes, { [`payload.${key}.note`]: 'new' })
+      for (const apply of [updateObject, fields.update]) {
+        throws(() => apply(before, changes), {
           message: 'Forbidden key: ' + key,
         })
       }
+      const merged = mergeObjects(before, after)
+      deepStrictEqual(merged.updated, before)
+      deepStrictEqual(merged.conflicts, {
+        [`payload.${key}.note`]: ['old', 'new'],
+      })
+      strictEqual(Object.getPrototypeOf(merged.updated), Object.prototype)
+      strictEqual(Object.prototype.note, undefined)
     })
 
-    it(`rejects ${key} when validating nested data and opaque objects`, () => {
-      const fields = buildDefinition({ 'payload.{}.note': 'str' })
-      for (const validate of [fields.validate, definition.validate]) {
-        throws(() => validate({ payload: { [key]: { note: 'data' } } }), {
+    it(`rejects ${key} when merging new data through the write boundary`, () => {
+      const after = { payload: { [key]: { note: 'new' } } }
+      for (const merge of [mergeObjects, definition.merge]) {
+        throws(() => merge({}, after), {
           message: 'Forbidden key: ' + key,
         })
       }
-      throws(() => definition.validate({ [key]: null }), {
-        message: 'Forbidden key: ' + key,
-      })
-      const payload = Object.assign(['data'], { metadata: { [key]: 'data' } })
-      throws(() => definition.validate({ payload }), {
-        message: 'Forbidden key: ' + key,
-      })
-    })
-
-    it(`rejects ${key} while diffing or merging changed data`, () => {
-      const before = { payload: { [key]: 'old' } }
-      const after = { payload: { [key]: 'new' } }
-      for (const run of [getChanges, mergeObjects, definition.merge]) {
-        throws(() => run(before, after), {
-          message: 'Forbidden key: ' + key,
-        })
-      }
-      throws(() => getChanges({ [key]: 'old' }, {}), {
-        message: 'Forbidden key: ' + key,
-      })
     })
   }
 
