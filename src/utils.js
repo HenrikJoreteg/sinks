@@ -1,5 +1,20 @@
 const hasOwnProperty = Object.prototype.hasOwnProperty
 const propertyIsEnumerable = Object.prototype.propertyIsEnumerable
+const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype'])
+
+export const assertAllowedKey = key => {
+  if (forbiddenKeys.has(key)) throw Error('Forbidden key: ' + key)
+}
+
+// Inspect incoming values before cleanup can mutate them. Existing documents
+// need no additional traversal for scalar updates. Functions remain opaque.
+export const assertAllowedKeys = value => {
+  if (value === null || typeof value !== 'object') return
+  for (const key of Object.keys(value)) {
+    assertAllowedKey(key)
+    assertAllowedKeys(value[key])
+  }
+}
 
 // Use the built-in method, including on runtimes without Object.hasOwn.
 export const hasOwn = (object, key) => hasOwnProperty.call(object, key)
