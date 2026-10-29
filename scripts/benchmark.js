@@ -46,6 +46,7 @@ const loadApi = async specifier => {
     'setValue',
     'getChanges',
     'mergeObjects',
+    'simpleObjectDeepEqual',
   ]) {
     if (typeof api[name] !== 'function')
       throw Error(`${specifier}: missing ${name} export`)
@@ -80,6 +81,7 @@ const makeWorkloads = (api, size) => {
   const flatChanged = Object.fromEntries(
     Array.from({ length: size }, (_, index) => ['key' + index, 'after'])
   )
+  const flatEqual = { ...flat }
   const items = Array.from({ length: size }, (_, index) => 'item' + index)
   const arrayState = { items }
   const ten = Object.fromEntries(
@@ -96,6 +98,7 @@ const makeWorkloads = (api, size) => {
     note: 'text' + index,
   }))
   const tiny = { note: 'before', group: { note: 'old' } }
+  const tinyEqual = structuredClone(tiny)
   const workloads = [
     [
       'tiny scalar update',
@@ -161,6 +164,21 @@ const makeWorkloads = (api, size) => {
       { ['records.id' + middle + '.note']: 'after' },
     ],
     ['diff equal cloned tree', () => api.getChanges(state, equal), null],
+    [
+      'deep equality small tree',
+      () => api.simpleObjectDeepEqual(tiny, tinyEqual),
+      true,
+    ],
+    [
+      'deep equality flat fields',
+      () => api.simpleObjectDeepEqual(flat, flatEqual),
+      true,
+    ],
+    [
+      'deep equality cloned tree',
+      () => api.simpleObjectDeepEqual(state, equal),
+      true,
+    ],
     [
       'diff all flat fields',
       () => api.getChanges(flat, flatChanged),

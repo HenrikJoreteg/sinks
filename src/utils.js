@@ -1,4 +1,5 @@
 const hasOwnProperty = Object.prototype.hasOwnProperty
+const propertyIsEnumerable = Object.prototype.propertyIsEnumerable
 
 // Use the built-in method, including on runtimes without Object.hasOwn.
 export const hasOwn = (object, key) => hasOwnProperty.call(object, key)
@@ -81,7 +82,8 @@ export const simpleObjectDeepEqual = (a, b, keysToIgnore = []) => {
   const keysB = Object.keys(b).filter(key => !keysToIgnore.includes(key))
   if (keysA.length !== keysB.length) return false
   for (const key of keysA) {
-    if (!keysB.includes(key)) return false
+    // Match Object.keys semantics without scanning the second key list each time.
+    if (!propertyIsEnumerable.call(b, key)) return false
     if (!simpleObjectDeepEqual(a[key], b[key])) return false
   }
   return true

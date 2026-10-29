@@ -63,15 +63,23 @@ const buildMatcherFunction = definition => {
     }
   }
 
+  // Compile the candidate lists once instead of enumerating prefixes per path.
+  for (const length of Object.keys(processedByLength)) {
+    const processed = processedByLength[length]
+    processedByLength[length] = Object.keys(processed).map(key => [
+      key,
+      processed[key],
+    ])
+  }
+
   return path => {
     if (hasOwn(definition, path)) {
       return definition[path]
     }
     const length = path.split('.').length
-    const processed = processedByLength[length]
-    for (const key of Object.keys(processed || {})) {
+    const processed = processedByLength[length] || []
+    for (const [key, limitedItemsToTest] of processed) {
       if (path.startsWith(key)) {
-        const limitedItemsToTest = processed[key]
         for (const { test, value } of limitedItemsToTest) {
           if (test(path)) {
             return value

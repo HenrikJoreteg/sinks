@@ -330,7 +330,7 @@ The test suite uses Node.js' built-in test runner. CI runs on Node.js 22, and th
 ## Benchmarks
 
 From a repository checkout, run `npm run benchmark` to measure updates, array
-edits, diffs, merges, schema validation, and replaying queued updates at multiple
+edits, diffs, deep equality, merges, schema validation, and replaying queued updates at multiple
 fixture sizes. To compare against another checkout, pass its entry file:
 
 ```sh
