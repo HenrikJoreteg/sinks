@@ -1,6 +1,6 @@
 {
   "name": "sinks",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Tools for object sync (get it?!), validation, diffing, and immutable deep setting",
   "type": "module",
   "main": "./src/index.js",
@@ -12,6 +12,7 @@
     "prepublishOnly": "npm run format && npm run lint && npm test",
     "test-inspect": "node --inspect-brk --test src/main.spec.js",
     "test": "node --test src/*.spec.js",
+    "benchmark": "node scripts/benchmark.js",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -41,7 +42,5 @@
     "singleQuote": true,
     "jsdocParser": true
   },
-  "dependencies": {
-    "dlv": "1.1.3"
-  }
+  "dependencies": {}
 }

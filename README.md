@@ -8,6 +8,12 @@ Small enough for use in client-side code. In fact, it's very handy if you're loo
 
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
 
+Updates treat keys as own data properties. Names such as `__proto__`,
+`constructor`, and `prototype` remain literal data; paths never follow inherited
+properties or descend into a function's prototype. Copying, diffing, cleanup,
+and schema validation use own enumerable properties. These protections apply
+even when schema validation is disabled and do not require `Object.hasOwn`.
+
 ## What does it do?
 
 It was designed to be part of a system where data stored as simple objects needs to be synchronized between servers and clients yet allow for disconnected changes and caching state locally then synchronizing it again when reconnected.
@@ -321,6 +327,40 @@ npm test
 
 The test suite uses Node.js' built-in test runner. CI runs on Node.js 22, and the package requires Node.js 20 or newer.
 
+## Benchmarks
+
+From a repository checkout, run `npm run benchmark` to measure updates, array
+edits, diffs, deep equality, merges, schema validation, and replaying queued updates at multiple
+fixture sizes. To compare against another checkout, pass its entry file:
+
+```sh
+npm run benchmark -- --baseline ../sinks-main/src/index.js
+```
+
+To compare a published version, install it under an alias without changing the
+package manifest or lockfile:
+
+```sh
+npm install --no-save --package-lock=false sinks-baseline@npm:sinks@4.0.2
+npm run benchmark -- --baseline sinks-baseline
+```
+
+Use `--sizes 100,1000,5000`, `--filter array`, or `--samples 9` to adjust the run.
+`--candidate` selects a different candidate module; `--json` emits structured
+results (use `node scripts/benchmark.js --json` for JSON without npm's banner).
+Local checkouts need their runtime dependencies installed. The runner checks
+results before timing, warms each implementation, and alternates comparison
+order. It reports median milliseconds per operation and candidate/baseline
+ratios; lower is faster. Fixture creation and module loading are excluded.
+These are Node.js CPU benchmarks; browser and application timings may differ.
+
+Pull requests also run the benchmark comparison in GitHub Actions against their
+base commit. The workflow saves JSON results and updates one PR comment with
+absolute times, ratios, and the tested commits. Timing differences are advisory;
+incorrect results or benchmark execution errors fail the benchmark job. A
+separate reporting workflow runs trusted default-branch code so forks can
+receive comments without granting write access to their benchmark code.
+
 ## install
 
 ```
@@ -329,6 +369,7 @@ npm install sinks
 
 ## Change log
 
+- `4.0.3`: Security fix: define update keys as own data properties and follow only own fields when traversing update paths. Prevents prototype injection while preserving literal `__proto__`, `constructor`, and `prototype` data keys. Functions remain opaque values when traversing paths. Schema and validator lookup use own entries. Replaces `dlv` with an own-property conflict reader.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.
 - `3.1.4`: Fixed build errors caused by recent dependency changes
 - `3.1.3`: Some more, minor performance improvements for validate() functions by doing a bit more pre-sorting.

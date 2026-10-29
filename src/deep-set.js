@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import { isEmpty } from './utils.js'
+import { getOwnValue, hasOwn, isEmpty, setOwnValue } from './utils.js'
 const digitRe = /^\[\d+\]/
 
 export const removeNullAndEmpty = original => {
@@ -38,16 +38,17 @@ export const removeNullAndEmpty = original => {
 
     if (isArray) {
       for (let i = 0, l = obj.length; i < l; i++) {
+        if (!hasOwn(obj, i)) continue
         const value = obj[i]
         if (value === null || isEmpty(value)) {
-          obj.splice(i, 1)
+          Array.prototype.splice.call(obj, i, 1)
           removeEmpty(original)
         } else {
           removeEmpty(value)
         }
       }
     } else {
-      for (const key in obj) {
+      for (const key of Object.keys(obj || {})) {
         const value = obj[key]
         if (value === null || isEmpty(value)) {
           delete obj[key]
@@ -65,8 +66,16 @@ export const removeNullAndEmpty = original => {
 }
 
 const copy = (source, isArr) => {
-  let to = (source && !!source.pop) || isArr ? [] : {}
-  for (let i in source) to[i] = source[i]
+  const isArray = Array.isArray(source) || isArr
+  const to = isArray ? [] : Object.create(null)
+  // Copy with no prototype so assignment cannot invoke an inherited setter,
+  // including __proto__. Restore the normal prototype only after all writes.
+  if (isArray) Object.setPrototypeOf(to, null)
+  // Functions stay opaque values: never copy their prototype into a data branch.
+  if (source !== null && typeof source === 'object') {
+    for (const key of Object.keys(source)) to[key] = source[key]
+  }
+  Object.setPrototypeOf(to, isArray ? Array.prototype : Object.prototype)
   return to
 }
 
@@ -84,23 +93,29 @@ export default (source, keys, update, merge = true) => {
   for (; i < l; i++) {
     const isLast = i === l - 1
     const currentKey = keys[i]
+    const currentValue = getOwnValue(last, currentKey)
     if (shouldDelete && isLast) {
       if (Array.isArray(last)) {
-        last.splice(currentKey, 1)
+        Array.prototype.splice.call(last, currentKey, 1)
       } else {
         delete last[currentKey]
       }
     } else {
       if (isLast) {
-        last[currentKey] =
+        setOwnValue(
+          last,
+          currentKey,
           typeof update === 'object' && !Array.isArray(update) && merge
-            ? Object.assign({}, last[currentKey], update)
+            ? {
+                ...(typeof currentValue === 'object' ? currentValue : {}),
+                ...update,
+              }
             : update
-      } else {
-        last = last[currentKey] = copy(
-          last[currentKey],
-          typeof keys[i + 1] === 'number'
         )
+      } else {
+        const child = copy(currentValue, typeof keys[i + 1] === 'number')
+        setOwnValue(last, currentKey, child)
+        last = child
       }
     }
   }

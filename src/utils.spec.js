@@ -1,6 +1,33 @@
 import { test } from './test-helpers.js'
 import { injectBrackets, simpleObjectDeepEqual } from './utils.js'
 
+it('requires matching keys to be own and enumerable when comparing objects', () => {
+  const hidden = Object.defineProperty({ other: 1 }, 'note', { value: 1 })
+  const inherited = Object.assign(Object.create({ note: 1 }), { other: 1 })
+  for (const other of [hidden, inherited, { other: 1 }]) {
+    deepStrictEqual(simpleObjectDeepEqual({ note: 1 }, other), false)
+    deepStrictEqual(simpleObjectDeepEqual(other, { note: 1 }), false)
+  }
+})
+
+it('compares literal keys without calling input-owned enumeration methods', () => {
+  const before = JSON.parse(
+    '{"__proto__":"literal","propertyIsEnumerable":"data","hasOwnProperty":"data"}'
+  )
+  const after = JSON.parse(JSON.stringify(before))
+  deepStrictEqual(simpleObjectDeepEqual(before, after), true)
+  after.__proto__ = 'changed'
+  deepStrictEqual(simpleObjectDeepEqual(before, after), false)
+})
+
+it('ignores only the requested top-level keys during deep comparison', () => {
+  const before = { skip: 'before', nested: { skip: 'same' } }
+  const after = { nested: { skip: 'same' } }
+  deepStrictEqual(simpleObjectDeepEqual(before, after, ['skip']), true)
+  after.nested.skip = 'changed'
+  deepStrictEqual(simpleObjectDeepEqual(before, after, ['skip']), false)
+})
+
 test('injectBrackets', t => {
   // we will never do this, but we don't want this function
   // to care if the thing it is wrapping is a number or not
@@ -213,3 +240,5 @@ test('simpleObjectDeepEqual', t => {
 
   t.end()
 })
+import { it } from 'node:test'
+import { deepStrictEqual } from 'node:assert/strict'
