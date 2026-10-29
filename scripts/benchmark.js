@@ -101,6 +101,7 @@ const makeWorkloads = (api, size) => {
     'records.{}.metrics.value': 'num',
     'records.{}.metrics.time': 'num',
   })
+  const opaqueDefinition = api.buildDefinition({ note: 'str', records: 'obj' })
   const updates = Array.from({ length: 100 }, (_, index) => ({
     note: 'text' + index,
   }))
@@ -140,6 +141,16 @@ const makeWorkloads = (api, size) => {
       '10-field update batch',
       () => api.updateObject(state, ten),
       { ...state, ...ten },
+    ],
+    [
+      'whole object replacement',
+      () => api.updateObject({ note: state.note }, { records }),
+      state,
+    ],
+    [
+      'opaque object schema validation',
+      () => opaqueDefinition.validate(state),
+      undefined,
     ],
     [
       'array index replacement',

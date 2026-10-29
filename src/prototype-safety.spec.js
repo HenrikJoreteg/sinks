@@ -16,76 +16,156 @@ import {
 import { hasOwn } from './utils.js'
 
 const definition = buildDefinition({ payload: 'obj', note: 'str' })
+const forbiddenKeys = ['__proto__', 'constructor', 'prototype']
+const setters = [
+  ['setValue', setValue],
+  ['definition.setValue', definition.setValue],
+  [
+    'definition.setValue without validation',
+    (obj, path, value) => definition.setValue(obj, path, value, false),
+  ],
+  ['updateObject', (obj, path, value) => updateObject(obj, { [path]: value })],
+  [
+    'definition.update',
+    (obj, path, value) => definition.update(obj, { [path]: value }),
+  ],
+  [
+    'definition.update without validation',
+    (obj, path, value) => definition.update(obj, { [path]: value }, false),
+  ],
+]
 
-describe('prototype-safe updates', () => {
-  for (const [name, update] of [
-    ['updateObject', updateObject],
-    ['definition.update', definition.update],
-    [
-      'definition.update without validation',
-      (obj, edits) => definition.update(obj, edits, false),
-    ],
-  ]) {
-    it(`${name} keeps nested __proto__ keys as own data`, () => {
-      const payload = JSON.parse(
-        '{"__proto__":{"injected":"data"},"note":"own"}'
-      )
-      const first = update({}, { payload })
-      const second = update(first, { 'payload.note': 'changed' })
-      strictEqual(Object.getPrototypeOf(first.payload), Object.prototype)
-      strictEqual(Object.getPrototypeOf(second.payload), Object.prototype)
-      strictEqual(hasOwn(second.payload, '__proto__'), true)
-      strictEqual(hasOwn(second.payload, 'injected'), false)
-      deepStrictEqual(second.payload.__proto__, { injected: 'data' })
-      strictEqual(Object.prototype.injected, undefined)
+describe('reserved prototype keys', () => {
+  for (const [name, set] of setters) {
+    for (const key of forbiddenKeys) {
+      it(`${name} rejects ${key} at every depth, including deletion paths`, () => {
+        const before = { payload: { note: 'original' } }
+        for (const path of [key, `payload.${key}`, `payload.${key}.note`]) {
+          for (const value of ['data', null]) {
+            throws(() => set(before, path, value), {
+              message: 'Forbidden key: ' + key,
+            })
+          }
+        }
+        deepStrictEqual(before, { payload: { note: 'original' } })
+        strictEqual(Object.prototype.note, undefined)
+      })
+
+      it(`${name} rejects nested ${key} values before cleaning the payload`, () => {
+        for (const value of ['data', null, {}]) {
+          const payload = { empty: null, nested: [{ [key]: value }] }
+          throws(() => set({}, 'payload', payload), {
+            message: 'Forbidden key: ' + key,
+          })
+          deepStrictEqual(payload, { empty: null, nested: [{ [key]: value }] })
+        }
+      })
+
+      it(`${name} checks array metadata and objects inside metadata`, () => {
+        for (const payload of [
+          Object.defineProperty(['data'], key, {
+            value: 'metadata',
+            enumerable: true,
+          }),
+          Object.assign(['data'], { metadata: { [key]: 'nested' } }),
+        ]) {
+          throws(() => set({}, 'payload', payload), {
+            message: 'Forbidden key: ' + key,
+          })
+        }
+      })
+    }
+  }
+
+  for (const key of forbiddenKeys) {
+    it(`rejects array-form and coerced ${key} path segments`, () => {
+      for (const set of [setValue, definition.setValue]) {
+        for (const segment of [key, Object(key), { toString: () => key }]) {
+          throws(() => set({}, ['payload', segment, 'note'], 'data'), {
+            message: 'Forbidden key: ' + key,
+          })
+        }
+      }
+    })
+
+    it(`copies existing ${key} data safely without checking it again`, () => {
+      for (const source of [
+        { [key]: 'existing' },
+        Object.defineProperty([], key, { value: 'existing', enumerable: true }),
+      ]) {
+        const updated = setValue(source, 'note', 'new')
+        strictEqual(hasOwn(updated, key), true)
+        strictEqual(updated[key], 'existing')
+        strictEqual(
+          Object.getPrototypeOf(updated),
+          Object.getPrototypeOf(source)
+        )
+      }
+      const source = { payload: { [key]: 'existing' } }
+      deepStrictEqual(setValue(source, 'note', 'new'), {
+        ...source,
+        note: 'new',
+      })
+    })
+
+    it(`reads existing ${key} data but rejects applying changes to it`, () => {
+      const fields = buildDefinition({ [`payload.${key}.note`]: 'str' })
+      const before = { payload: { [key]: { note: 'old' } } }
+      const after = { payload: { [key]: { note: 'new' } } }
+      doesNotThrow(() => fields.validate(after))
+      doesNotThrow(() => definition.validate(after))
+      const changes = getChanges(before, after)
+      deepStrictEqual(changes, { [`payload.${key}.note`]: 'new' })
+      for (const apply of [updateObject, fields.update]) {
+        throws(() => apply(before, changes), {
+          message: 'Forbidden key: ' + key,
+        })
+      }
+      const merged = mergeObjects(before, after)
+      deepStrictEqual(merged.updated, before)
+      deepStrictEqual(merged.conflicts, {
+        [`payload.${key}.note`]: ['old', 'new'],
+      })
+      strictEqual(Object.getPrototypeOf(merged.updated), Object.prototype)
+      strictEqual(Object.prototype.note, undefined)
+    })
+
+    it(`rejects ${key} when merging new data through the write boundary`, () => {
+      const after = { payload: { [key]: { note: 'new' } } }
+      for (const merge of [mergeObjects, definition.merge]) {
+        throws(() => merge({}, after), {
+          message: 'Forbidden key: ' + key,
+        })
+      }
     })
   }
 
-  it('keeps top-level __proto__ keys safe across subsequent updates', () => {
-    const edits = JSON.parse('{"__proto__":{"injected":"data"}}')
-    const first = updateObject({}, edits)
-    const second = updateObject(first, { note: 'changed' })
-    strictEqual(Object.getPrototypeOf(first), Object.prototype)
-    strictEqual(Object.getPrototypeOf(second), Object.prototype)
-    strictEqual(hasOwn(second, '__proto__'), true)
-    strictEqual(hasOwn(second, 'injected'), false)
-    deepStrictEqual(second.__proto__, { injected: 'data' })
-    strictEqual(Object.prototype.injected, undefined)
+  it('allows similar names and reserved names as string values', () => {
+    const data = {
+      prototypeId: '__proto__',
+      Constructor: 'constructor',
+      __proto__suffix: 'prototype',
+      hasOwnProperty: 'data',
+      toString: 'literal',
+    }
+    const fields = buildDefinition(
+      Object.fromEntries(Object.keys(data).map(key => [key, 'str']))
+    )
+    deepStrictEqual(fields.update({}, data), data)
+    deepStrictEqual(updateObject({}, getChanges({}, data)), data)
+    const nullPrototype = Object.assign(Object.create(null), { note: 'data' })
+    deepStrictEqual(getChanges({}, nullPrototype), { note: 'data' })
   })
 
-  for (const [name, set] of [
-    ['setValue', setValue],
-    ['definition.setValue', definition.setValue],
-    [
-      'definition.setValue without validation',
-      (obj, path, value) => definition.setValue(obj, path, value, false),
-    ],
-  ]) {
-    it(`${name} never follows inherited prototype or constructor branches`, () => {
-      for (const [path, key] of [
-        ['payload.__proto__.injected', '__proto__'],
-        ['payload.constructor.prototype.injected', 'constructor'],
-        [['payload', '__proto__', 'injected'], '__proto__'],
-      ]) {
-        const result = set({}, path, 'data')
-        strictEqual(Object.getPrototypeOf(result.payload), Object.prototype)
-        strictEqual(Object.prototype.injected, undefined)
-        strictEqual(hasOwn(result.payload, key), true)
-      }
-    })
-  }
-
-  it('replaces a function branch without following its prototype', () => {
+  it('replaces function branches without copying their properties', () => {
     function supplied() {}
-    const before = { constructor: supplied }
-    deepStrictEqual(
-      setValue(before, 'constructor.prototype.injected', 'data'),
-      {
-        constructor: { prototype: { injected: 'data' } },
-      }
-    )
-    strictEqual(hasOwn(supplied.prototype, 'injected'), false)
-    strictEqual(before.constructor, supplied)
+    supplied.details = { previous: 'data' }
+    const before = { payload: supplied }
+    deepStrictEqual(setValue(before, 'payload.details.note', 'new'), {
+      payload: { details: { note: 'new' } },
+    })
+    deepStrictEqual(supplied.details, { previous: 'data' })
+    strictEqual(before.payload, supplied)
   })
 
   it('copies into fresh containers without invoking inherited setters', () => {
@@ -118,17 +198,10 @@ describe('prototype-safe updates', () => {
   it('preserves own array metadata and holes through repeated copies', () => {
     const items = ['one', 'two', 'three']
     delete items[1]
-    Object.defineProperty(items, '__proto__', {
-      value: 'literal',
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    })
     items.label = 'metadata'
     const first = setValue({ items }, 'items.[0]', 'changed')
     const second = setValue(first, 'items.[2]', 'last')
     strictEqual(Object.getPrototypeOf(second.items), Array.prototype)
-    strictEqual(second.items.__proto__, 'literal')
     strictEqual(second.items.label, 'metadata')
     strictEqual(hasOwn(second.items, 1), false)
     strictEqual(second.items[2], 'last')
@@ -136,50 +209,7 @@ describe('prototype-safe updates', () => {
     strictEqual(items[2], 'three')
   })
 
-  it('round-trips literal prototype keys through diffs and merge conflicts', () => {
-    const before = JSON.parse(
-      '{"__proto__":{"note":"old"},"constructor":{"prototype":{"note":"old"}},"hasOwnProperty":"old"}'
-    )
-    const after = JSON.parse(
-      '{"__proto__":{"note":"new"},"constructor":{"prototype":{"note":"new"}},"hasOwnProperty":"new"}'
-    )
-    const changes = getChanges(before, after)
-    deepStrictEqual(updateObject(before, changes), after)
-    const merged = mergeObjects(before, after)
-    deepStrictEqual(merged.updated, before)
-    deepStrictEqual(merged.conflicts, {
-      '__proto__.note': ['old', 'new'],
-      'constructor.prototype.note': ['old', 'new'],
-      hasOwnProperty: ['old', 'new'],
-    })
-    strictEqual(Object.getPrototypeOf(changes), Object.prototype)
-    strictEqual(Object.getPrototypeOf(merged.updated), Object.prototype)
-    const nullPrototype = Object.assign(Object.create(null), { note: 'data' })
-    deepStrictEqual(getChanges({}, nullPrototype), { note: 'data' })
-  })
-
-  it('defines scalar __proto__ changes and conflicts as own properties', () => {
-    const before = JSON.parse('{"__proto__":"old"}')
-    const after = JSON.parse('{"__proto__":"new"}')
-    const changes = getChanges(before, after)
-    deepStrictEqual(changes, after)
-    deepStrictEqual(updateObject(before, changes), after)
-    const conflicts = mergeObjects(before, after).conflicts
-    strictEqual(hasOwn(conflicts, '__proto__'), true)
-    deepStrictEqual(conflicts.__proto__, ['old', 'new'])
-    strictEqual(Object.getPrototypeOf(conflicts), Object.prototype)
-    deepStrictEqual(updateObject(after, getChanges(after, {})), {})
-  })
-
   it('uses only explicitly supplied schema fields and type validators', () => {
-    const fields = buildDefinition(
-      JSON.parse('{"__proto__.note":"str","constructor.prototype.note":"str"}')
-    )
-    const data = JSON.parse(
-      '{"__proto__":{"note":"one"},"constructor":{"prototype":{"note":"two"}}}'
-    )
-    doesNotThrow(() => fields.validate(data))
-    deepStrictEqual(fields.update({}, getChanges({}, data)), data)
     throws(
       () => buildDefinition({}).validate({ toString: 'data' }),
       /INVALID path/
@@ -198,10 +228,10 @@ describe('prototype-safe updates', () => {
       /INVALID type/
     )
     const custom = buildDefinition(
-      { constructor: 'constructor' },
+      { note: 'constructor' },
       { constructor: basicTypes.str }
     )
-    doesNotThrow(() => custom.validate({ constructor: 'data' }))
+    doesNotThrow(() => custom.validate({ note: 'data' }))
   })
 
   it('ignores inherited fields in copying, diffing, cleanup, and validation', () => {

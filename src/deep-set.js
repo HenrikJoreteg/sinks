@@ -24,7 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import { getOwnValue, hasOwn, isEmpty, setOwnValue } from './utils.js'
+import {
+  assertAllowedKey,
+  assertAllowedKeys,
+  getOwnValue,
+  hasOwn,
+  isEmpty,
+  setOwnValue,
+} from './utils.js'
 const digitRe = /^\[\d+\]/
 
 export const removeNullAndEmpty = original => {
@@ -84,7 +91,14 @@ const copy = (source, isArr) => {
 
 export default (source, keys, update, merge = true) => {
   keys.split && (keys = keys.split('.'))
-  keys = keys.map(key => (digitRe.test(key) ? Number(key.slice(1, -1)) : key))
+  keys = keys.map(key => {
+    // Normalize once so object-valued segments cannot bypass the name check
+    // through property-key coercion. Keep native numeric deletion indexes.
+    key = typeof key === 'number' ? key : String(key)
+    assertAllowedKey(key)
+    return digitRe.test(key) ? Number(key.slice(1, -1)) : key
+  })
+  assertAllowedKeys(update)
 
   let next = copy(source),
     last = next,

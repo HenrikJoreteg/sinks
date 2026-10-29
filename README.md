@@ -8,11 +8,19 @@ Small enough for use in client-side code. In fact, it's very handy if you're loo
 
 Enables validation (optional), deep immutable setting of values, and efficient diffing.
 
-Updates treat keys as own data properties. Names such as `__proto__`,
-`constructor`, and `prototype` remain literal data; paths never follow inherited
-properties or descend into a function's prototype. Copying, diffing, cleanup,
-and schema validation use own enumerable properties. These protections apply
-even when schema validation is disabled and do not require `Object.hasOwn`.
+`__proto__`, `constructor`, and `prototype` are reserved key names. Updates throw
+`Forbidden key: <name>` when any path segment or own enumerable key inside an
+incoming object or array uses one of these exact names. This includes array
+metadata and nested values, even inside schema fields typed as `obj` or when
+schema validation is disabled. String values and names such as `prototypeId`
+remain allowed. Functions remain opaque values.
+
+The restriction applies at the shared write boundary used by all update APIs.
+Validation, diffing, and equality retain their existing behavior for reading
+documents containing reserved keys. Existing source data is copied safely;
+unchanged branches are not scanned for reserved names. Paths never follow
+inherited properties or descend into a function's prototype. Own-property
+protections remain in place and do not require `Object.hasOwn`.
 
 ## What does it do?
 
@@ -374,6 +382,7 @@ npm install sinks
 
 ## Change log
 
+- `5.0.0`: Breaking change: reject `__proto__`, `constructor`, and `prototype` in update paths and incoming object values at the shared write boundary. Keep own-property protections and add benchmarks for whole-object replacement and opaque object validation.
 - `4.0.4`: Restore fast property storage for copied plain objects while preserving safe own-property writes and the existing array-copy path. Add benchmarks for consuming documents built through sinks.
 - `4.0.3`: Security fix: define update keys as own data properties and follow only own fields when traversing update paths. Prevents prototype injection while preserving literal `__proto__`, `constructor`, and `prototype` data keys. Functions remain opaque values when traversing paths. Schema and validator lookup use own entries. Replaces `dlv` with an own-property conflict reader.
 - `4.0.0`: Breaking release. Ships plain ESM source instead of bundled `dist` files, removes CommonJS/UMD entrypoints, requires Node.js 20+, switches tests to Node.js' built-in test runner, and treats explicit `null` tombstones as equivalent to already-missing values in `getChanges()`.

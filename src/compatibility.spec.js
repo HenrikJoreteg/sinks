@@ -14,20 +14,22 @@ it('supports prototype-safe data operations without Object.hasOwn', () => {
       '--eval',
       `
     Object.hasOwn = undefined
-    const { deepStrictEqual, strictEqual } = await import('node:assert/strict')
+    const { deepStrictEqual, strictEqual, throws } = await import('node:assert/strict')
     const { buildDefinition, getChanges, mergeObjects, setValue, updateObject } =
       await import(${JSON.stringify(moduleUrl)})
-    const before = JSON.parse('{"__proto__":{"note":"old"}}')
-    const after = JSON.parse('{"__proto__":{"note":"new"}}')
-    const definition = buildDefinition({ '__proto__.note': 'str' })
+    const before = { payload: { note: 'old' } }
+    const after = { payload: { note: 'new' } }
+    const definition = buildDefinition({ 'payload.note': 'str' })
     definition.validate(after)
     deepStrictEqual(updateObject(before, getChanges(before, after)), after)
-    deepStrictEqual(definition.update(before, { '__proto__.note': 'new' }), after)
-    deepStrictEqual(setValue({}, '__proto__.note', 'new'), after)
+    deepStrictEqual(definition.update(before, { 'payload.note': 'new' }), after)
+    deepStrictEqual(setValue({}, 'payload.note', 'new'), after)
     const merged = mergeObjects(before, after)
-    deepStrictEqual(merged.conflicts, { '__proto__.note': ['old', 'new'] })
+    deepStrictEqual(merged.conflicts, { 'payload.note': ['old', 'new'] })
     strictEqual(Object.getPrototypeOf(merged.updated), Object.prototype)
     deepStrictEqual(setValue({}, 'items', [null, 'new']), { items: ['new'] })
+    throws(() => setValue({}, '__proto__.note', 'new'), /Forbidden key/)
+    throws(() => updateObject({}, { payload: JSON.parse('{"__proto__":{"note":"new"}}') }), /Forbidden key/)
     strictEqual(Object.prototype.note, undefined)
   `,
     ],
